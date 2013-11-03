@@ -1,0 +1,3 @@
+*.sdf
+some_dir2/*.xxx
+some_dir/*.qqq
