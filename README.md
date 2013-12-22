@@ -1,9 +1,4 @@
-Tro-lo-lo
-==========
+Just a playground
+==================
 
-sdflasdfsadfsa
-
-Bla-bla-bla
-============
-
-Yipikayee
+This stuff is interesting mostly to me and only me
