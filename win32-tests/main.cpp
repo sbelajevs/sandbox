@@ -68,16 +68,17 @@ public:
 
         // Now we're ready to open the window
         {
-            DWORD wndStyle = WS_CLIPSIBLINGS | WS_CLIPCHILDREN 
+            ctx->wndStyle = WS_CLIPSIBLINGS | WS_CLIPCHILDREN 
                 | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU 
                 | WS_MINIMIZEBOX |  WS_MAXIMIZEBOX | WS_SIZEBOX;
-            DWORD wndExStyle = WS_EX_APPWINDOW;
+            ctx->wndExStyle = WS_EX_APPWINDOW;
 
-            int fullW = w;
-            int fullH = h;
+            int fullW = -1;
+            int fullH = -1;
+            ctx->getFullWindowSize(w, h, fullW, fullH);
 
             ctx->window = CreateWindowEx(
-               wndExStyle, WND_CLASS_NAME, "My window", wndStyle,
+               ctx->wndExStyle, WND_CLASS_NAME, "My window", ctx->wndStyle,
                x, y, fullW, fullH,
                NULL, NULL, ctx->instance, ctx
             );
@@ -102,21 +103,33 @@ public:
         return ctx;
     }
 
-    void setUpdateFun(UserCallback callback, void* arg)
+    void setUpdateCallback(UserCallback callback, void* arg)
     {
         updateFun = callback;
         updateArg = arg;
     }
 
-    void setRenderFun(UserCallback callback, void* arg)
+    void setRenderCallback(UserCallback callback, void* arg)
     {
         renderFun = callback;
         renderArg = arg;
     }
 
-    void runRendering()
+    void getClientSize(int& w, int& h)
     {
-        if (renderFun) { renderFun(renderArg); }
+        RECT area;
+        GetClientRect(window, &area);
+        w = area.right;
+        h = area.bottom;
+    }
+
+    void setClientSize(int w, int h)
+    {
+        int fullW = -1;
+        int fullH = -1;
+        getFullWindowSize(w, h, fullW, fullH);
+        SetWindowPos(window, HWND_TOP, 0, 0, fullW, fullH,
+                     SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
     }
 
     void run()
@@ -160,25 +173,24 @@ private:
     {
     }
 
+    void getFullWindowSize(int clientW, int clientH, int& fullW, int& fullH)
+    {
+        RECT rect = { 0, 0, clientW, clientH };
+        AdjustWindowRectEx(&rect, wndStyle, FALSE, wndExStyle);
+        fullW = rect.right - rect.left;
+        fullH = rect.bottom - rect.top;
+    }
+
     void poll()
     {
         MSG msg;
-
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
-            switch (msg.message)
-            {
-                case WM_QUIT:
-                {
-                    doFinish = true;
-                    break;
-                }
-                default:
-                {
-                    TranslateMessage(&msg);
-                    DispatchMessage(&msg);
-                    break;
-                }
+            if (msg.message == WM_QUIT) {
+                doFinish = true;
+            } else {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
             }
         }
     }
@@ -188,12 +200,15 @@ private:
         SwapBuffers(dc);
     }
 
-    bool doFinish;
     ATOM classAtom;
     HINSTANCE instance;
+    DWORD wndStyle;
+    DWORD wndExStyle;
     HWND window;
     HDC dc;
     HGLRC context;
+
+    bool doFinish;
 
     UserCallback updateFun;
     void* updateArg;
@@ -277,8 +292,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     Game game;
 
     WindowContext* window = WindowContext::open(100, 100, 640, 480);
-    window->setUpdateFun(update, &game);
-    window->setRenderFun(render, &game);
+    window->setUpdateCallback(update, &game);
+    window->setRenderCallback(render, &game);
+    window->setClientSize(800, 480);
     window->run();
     delete window;
 
