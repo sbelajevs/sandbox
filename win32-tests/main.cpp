@@ -57,6 +57,8 @@ static int getPixelFormatId(const HDC& dc)
 class WindowContext
 {
 public:
+    typedef void (*UserCallback)(void* data);
+
     static WindowContext* open(int x, int y, int w, int h)
     {
         WindowContext* ctx = new WindowContext();
@@ -111,31 +113,27 @@ public:
         return ctx;
     }
 
+    void setUpdateFun(UserCallback callback, void* arg)
+    {
+        updateFun = callback;
+        updateArg = arg;
+    }
+
+    void setRenderFun(UserCallback callback, void* arg)
+    {
+        renderFun = callback;
+        renderArg = arg;
+    }
+
     void run()
     {
-        float rd = 0.001f;
-        float gd = 0.005f;
-        float bd = 0.0025f;
-
-        float r = 0;
-        float g = 0;
-        float b = 0;
-
         while (doFinish == false) 
         {
-            if (r > 1.0f || r < 0.f) rd = -rd;
-            if (g > 1.0f || g < 0.f) gd = -gd;
-            if (b > 1.0f || b < 0.f) bd = -bd;
-            r += rd;
-            g += gd;
-            b += bd;
-
+            poll();
+            if (updateFun) { updateFun(updateArg); }
+            if (renderFun) { renderFun(renderArg); }
             Sleep(15);
             swapBuffers();
-            poll();
-
-            glClearColor(r, g, b, 1.f);
-            glClear(GL_COLOR_BUFFER_BIT);
         }
     }
 
@@ -159,7 +157,12 @@ private:
     WindowContext(const WindowContext& ctx);
     WindowContext& operator = (const WindowContext& other);
 
-    WindowContext(): doFinish(false)
+    WindowContext()
+        : doFinish(false)
+        , updateFun(NULL)
+        , updateArg(NULL)
+        , renderFun(NULL)
+        , renderArg(NULL)
     {
     }
 
@@ -172,12 +175,15 @@ private:
             switch (msg.message)
             {
                 case WM_QUIT:
+                {
                     doFinish = true;
                     break;
-
+                }
                 default:
+                {
                     DispatchMessage(&msg);
                     break;
+                }
             }
         }
     }
@@ -193,11 +199,68 @@ private:
     HWND window;
     HDC dc;
     HGLRC context;
+
+    UserCallback updateFun;
+    void* updateArg;
+
+    UserCallback renderFun;
+    void* renderArg;
 };
+
+class Game
+{
+public:
+    Game(): r(0.f), g(0.f), b(0.f), rd(0.001f), gd(0.005f), bd(0.0025f)
+    {
+    }
+
+    void update()
+    {
+        if (r > 1.0f || r < 0.f) rd = -rd;
+        if (g > 1.0f || g < 0.f) gd = -gd;
+        if (b > 1.0f || b < 0.f) bd = -bd;
+        r += rd;
+        g += gd;
+        b += bd;
+    }
+
+    void render()
+    {
+        glClearColor(r, g, b, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+    }
+
+private:
+    float r;
+    float g;
+    float b;
+
+    float rd;
+    float gd;
+    float bd;
+};
+
+void update(void* arg)
+{
+    if (arg != NULL) {
+        ((Game*)arg)->update();
+    }
+}
+
+void render(void* arg)
+{
+    if (arg != NULL) {
+        ((Game*)arg)->render();
+    }
+}
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
+    Game game;
+
     WindowContext* window = WindowContext::open(100, 100, 640, 480);
+    window->setUpdateFun(update, &game);
+    window->setRenderFun(render, &game);
     window->run();
     delete window;
 
