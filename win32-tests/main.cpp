@@ -3,20 +3,7 @@
 
 static const char WND_CLASS_NAME[] = "win32-tests";
 
-static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-    switch (msg)
-    {
-        case WM_CLOSE:
-        {
-            // Translate this to WM_QUIT so that we can handle all cases in the same place
-            PostQuitMessage(0);
-            return 0;
-        }
-    }
-
-    return DefWindowProc(hwnd, msg, wParam, lParam );
-}
+static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 static int getPixelFormatId(const HDC& dc)
 {
@@ -92,7 +79,7 @@ public:
             ctx->window = CreateWindowEx(
                wndExStyle, WND_CLASS_NAME, "My window", wndStyle,
                x, y, fullW, fullH,
-               NULL, NULL, ctx->instance, NULL
+               NULL, NULL, ctx->instance, ctx
             );
         }
 
@@ -108,6 +95,8 @@ public:
 
         // And finally, make it visible
         ShowWindow(ctx->window, SW_SHOWNORMAL);
+        BringWindowToTop(ctx->window);
+        SetForegroundWindow(ctx->window);
         SetFocus(ctx->window);
 
         return ctx;
@@ -123,6 +112,11 @@ public:
     {
         renderFun = callback;
         renderArg = arg;
+    }
+
+    void runRendering()
+    {
+        if (renderFun) { renderFun(renderArg); }
     }
 
     void run()
@@ -181,6 +175,7 @@ private:
                 }
                 default:
                 {
+                    TranslateMessage(&msg);
                     DispatchMessage(&msg);
                     break;
                 }
@@ -206,6 +201,29 @@ private:
     UserCallback renderFun;
     void* renderArg;
 };
+
+static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    WindowContext* window = (WindowContext*) GetWindowLongPtr(hwnd, 0);
+
+    switch (msg)
+    {
+        case WM_CREATE:
+        {
+            CREATESTRUCT* cs = (CREATESTRUCT*) lParam;
+            SetWindowLongPtr(hwnd, 0, (LONG_PTR) cs->lpCreateParams);
+            break;
+        }
+
+        case WM_CLOSE:
+        {
+            PostQuitMessage(0);
+            return 0;
+        }
+    }
+
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
 
 class Game
 {
