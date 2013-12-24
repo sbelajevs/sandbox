@@ -202,7 +202,25 @@ struct Graphics
         texShader.uniforms[UNIFORM_MVP] = GetUniformLocation(texShader.id, "MVP");
         texShader.uniforms[UNIFORM_TEX] = GetUniformLocation(texShader.id, "sampler");
 
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
         initialized = true;
+    }
+
+    void setScreen(int w, int h)
+    {
+        static const float BASE_ORTHO[] = {
+           2.f,  0.f, 0.f, 0.f,
+           0.f, -2.f, 0.f, 0.f,
+           0.f,  0.f, 0.f, 0.f,
+          -1.f,  1.f, 0.f, 1.f,
+        };
+        memcpy(orthoProj, BASE_ORTHO, sizeof(BASE_ORTHO));
+        orthoProj[0] /= w;
+        orthoProj[5] /= h;
+
+        glViewport(0, 0, w, h);
     }
 
     int addTexture(const unsigned char* data, int w, int h)
@@ -302,6 +320,7 @@ private:
     GLuint textures[16];
     int textureLen;
 
+    float orthoProj[16];
     ShaderProgram texShader;
 
     #define GLAPIENTRY __stdcall
@@ -397,6 +416,7 @@ public:
         getWindowSize(w, h, wndW, wndH);
         SetWindowPos(mWindow, HWND_TOP, 0, 0, wndW, wndH,
                      SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
+        gfx.setScreen(w, h);
     }
 
     void setMinClientSize(int w, int h)
@@ -412,6 +432,7 @@ public:
 
     void doResize(int newW, int newH)
     {
+        gfx.setScreen(newW, newH);
         if (mResizeFun) { 
             mResizeFun(mCallbackArg, newW, newH); 
         }
@@ -522,8 +543,6 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
         {
             int w = LOWORD(lParam);
             int h = HIWORD(lParam);
-            // TODO: reset also projection matrix
-            glViewport(0, 0, w, h);
             window->doResize(w, h);
             window->doRenderingStep();
             return 0;
@@ -618,6 +637,7 @@ SysAPI* Sys_OpenWindow(const WindowParams* p)
 
     ctx->initFrameTime();
     ctx->gfx.init();
+    ctx->gfx.setScreen(p->width, p->height);
 
     ctx->mCallbackArg = p->gameObject;
     ctx->mUpdateFun = p->updateFun;
