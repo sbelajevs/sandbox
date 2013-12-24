@@ -150,6 +150,16 @@ public:
         h = area.bottom;
     }
 
+    void getMonitorResolution(int& w, int& h)
+    {
+        HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO minfo;
+        minfo.cbSize = sizeof(MONITORINFO);
+        GetMonitorInfo(hmon, &minfo);
+        w = minfo.rcMonitor.right - minfo.rcMonitor.left;
+        h = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
+    }
+
     void setClientSize(int w, int h)
     {
         if (ready == false) { return; }
