@@ -150,7 +150,7 @@ public:
         h = area.bottom;
     }
 
-    void getMonitorResolution(int& w, int& h)
+    void getDisplayResolution(int& w, int& h)
     {
         HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
         MONITORINFO minfo;
@@ -158,6 +158,26 @@ public:
         GetMonitorInfo(hmon, &minfo);
         w = minfo.rcMonitor.right - minfo.rcMonitor.left;
         h = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
+    }
+
+    int getDisplayRefreshRate()
+    {
+        HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        MONITORINFOEX minfo;
+        minfo.cbSize = sizeof(MONITORINFOEX);
+        GetMonitorInfo(hmon, &minfo);
+
+        DEVMODE devMode;
+        devMode.dmSize = sizeof(DEVMODE);
+        devMode.dmDriverExtra = 0;
+        EnumDisplaySettings(minfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode);
+
+        int result = (int)devMode.dmDisplayFrequency;
+        if (result < 10 || result > 1000) { 
+            result = 60; 
+        }
+
+        return result;
     }
 
     void setClientSize(int w, int h)
