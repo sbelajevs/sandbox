@@ -161,16 +161,15 @@ public:
                      SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
     }
 
-    void setMinSize(int w, int h)
+    void setMinClientSize(int w, int h)
     {
         minWidth = w;
         minHeight = h;
     }
 
-    void getMinSize(int& w, int& h)
+    void getMinWindowSize(int& w, int& h)
     {
-        w = minWidth;
-        h = minHeight;
+        getWindowSize(minWidth, minHeight, w, h);
     }
 
     void doResize(int newW, int newH)
@@ -319,7 +318,7 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
             MINMAXINFO* mmi = (MINMAXINFO*)lParam;
             int minW = -1;
             int minH = -1;
-            window->getMinSize(minW, minH);
+            window->getMinWindowSize(minW, minH);
             mmi->ptMinTrackSize.x = minW;
             mmi->ptMinTrackSize.y = minH;
             return 0;
@@ -393,7 +392,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     window->setUpdateCallback(update);
     window->setRenderCallback(render);
     window->setClientSize(800, 480);
-    window->setMinSize(320, 200);
+    window->setMinClientSize(320, 200);
     window->run();
     delete window;
 
