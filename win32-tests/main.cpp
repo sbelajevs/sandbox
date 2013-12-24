@@ -1,11 +1,13 @@
 #include <windows.h>
 #include <gl/GL.h>
 
-static const char WND_CLASS_NAME[] = "win32-tests";
+namespace {
 
-static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+const char WND_CLASS_NAME[] = "win32-tests";
 
-static int getPixelFormatId(const HDC& dc)
+LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+int getPixelFormatId(const HDC& dc)
 {
     int count = DescribePixelFormat(dc, 1, sizeof(PIXELFORMATDESCRIPTOR), NULL);
 
@@ -44,7 +46,8 @@ static int getPixelFormatId(const HDC& dc)
 class WindowContext
 {
 public:
-    typedef void (*UserCallback)(void* data);
+    typedef void (*GameCallback)(void* data);
+    typedef void (*ResizeCallback)(void* data, int newW, int newH);
 
     static WindowContext* open(int x, int y, int w, int h)
     {
@@ -58,6 +61,8 @@ public:
 
             wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
             wc.lpfnWndProc   = (WNDPROC) wndProc;
+            wc.cbClsExtra    = 0;
+            wc.cbWndExtra    = sizeof(void*) + sizeof(int);
             wc.hInstance     = ctx->instance;
             wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
             wc.hIcon         = LoadIcon(NULL, IDI_WINLOGO);
@@ -100,23 +105,34 @@ public:
         SetForegroundWindow(ctx->window);
         SetFocus(ctx->window);
 
+        ctx->ready = true;
         return ctx;
     }
 
-    void setUpdateCallback(UserCallback callback, void* arg)
+    void setCallbackArgument(void* arg)
     {
-        updateFun = callback;
-        updateArg = arg;
+        callbackArg = arg;
     }
 
-    void setRenderCallback(UserCallback callback, void* arg)
+    void setUpdateCallback(GameCallback callback)
+    {
+        updateFun = callback;
+    }
+
+    void setRenderCallback(GameCallback callback)
     {
         renderFun = callback;
-        renderArg = arg;
+    }
+
+    void setResizeCallback(ResizeCallback callback)
+    {
+        resizeFun = callback;
     }
 
     void getClientSize(int& w, int& h)
     {
+        if (ready == false) { return; }
+
         RECT area;
         GetClientRect(window, &area);
         w = area.right;
@@ -125,6 +141,8 @@ public:
 
     void setClientSize(int w, int h)
     {
+        if (ready == false) { return; }
+
         int fullW = -1;
         int fullH = -1;
         getFullWindowSize(w, h, fullW, fullH);
@@ -132,15 +150,35 @@ public:
                      SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
     }
 
+    void doResize(int newW, int newH)
+    {
+        if (resizeFun) { resizeFun(callbackArg, newW, newH); }
+    }
+
+    void doUpdateStep()
+    {
+        if (updateFun) { updateFun(callbackArg); }
+    }
+
+    void doRenderingStep()
+    {
+        if (renderFun)
+        {
+            renderFun(callbackArg);
+            swapBuffers();
+        }
+    }
+
     void run()
     {
+        if (ready == false) { return; }
+
         while (doFinish == false) 
         {
             poll();
-            if (updateFun) { updateFun(updateArg); }
-            if (renderFun) { renderFun(renderArg); }
+            doUpdateStep();
+            doRenderingStep();
             Sleep(15);
-            swapBuffers();
         }
     }
 
@@ -165,11 +203,12 @@ private:
     WindowContext& operator = (const WindowContext& other);
 
     WindowContext()
-        : doFinish(false)
+        : ready(false)
+        , doFinish(false)
+        , callbackArg(NULL)
         , updateFun(NULL)
-        , updateArg(NULL)
         , renderFun(NULL)
-        , renderArg(NULL)
+        , resizeFun(NULL)
     {
     }
 
@@ -208,26 +247,37 @@ private:
     HDC dc;
     HGLRC context;
 
+    bool ready;
     bool doFinish;
 
-    UserCallback updateFun;
-    void* updateArg;
-
-    UserCallback renderFun;
-    void* renderArg;
+    void* callbackArg;
+    GameCallback updateFun;
+    GameCallback renderFun;
+    ResizeCallback resizeFun;
 };
 
 static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    WindowContext* window = (WindowContext*) GetWindowLongPtr(hwnd, 0);
-
+    WindowContext* window = (WindowContext*)GetWindowLongPtr(hwnd, 0);
+    
     switch (msg)
     {
         case WM_CREATE:
         {
-            CREATESTRUCT* cs = (CREATESTRUCT*) lParam;
-            SetWindowLongPtr(hwnd, 0, (LONG_PTR) cs->lpCreateParams);
+            CREATESTRUCT* cs = (CREATESTRUCT*)lParam;
+            SetWindowLongPtr(hwnd, 0, (LONG)cs->lpCreateParams);
             break;
+        }
+
+        case WM_SIZE:
+        {
+            int w = LOWORD(lParam);
+            int h = HIWORD(lParam);
+            // TODO: reset also projection matrix
+            glViewport(0, 0, w, h);
+            window->doResize(w, h);
+            window->doRenderingStep();
+            return 0;
         }
 
         case WM_CLOSE:
@@ -287,13 +337,16 @@ void render(void* arg)
     }
 }
 
+} // anonymous namespace
+
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     Game game;
 
     WindowContext* window = WindowContext::open(100, 100, 640, 480);
-    window->setUpdateCallback(update, &game);
-    window->setRenderCallback(render, &game);
+    window->setCallbackArgument(&game);
+    window->setUpdateCallback(update);
+    window->setRenderCallback(render);
     window->setClientSize(800, 480);
     window->run();
     delete window;
