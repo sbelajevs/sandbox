@@ -4,13 +4,13 @@
 
 #include <math.h>
 
+#include "system.h"
+
 // TODO: add support for multiple monitors
 // * check if maximizing works on both monitors correctly
 // * check minimal window size
 // * check maximal window size
 // * check how resizing and positioning works
-
-namespace {
 
 const char WND_CLASS_NAME[] = "win32-tests";
 
@@ -77,137 +77,78 @@ public:
         // TODO: we're assuming that it doesn't fail
         __int64 freq = 1;
         QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
-        resolution = 1.0/freq;
+        mResolution = 1.0/freq;
         reset();
     }
 
     void reset()
     {
-        QueryPerformanceCounter((LARGE_INTEGER*) &lastTime);
+        QueryPerformanceCounter((LARGE_INTEGER*) &mLastTime);
     }
 
     double getDeltaSeconds()
     {
         __int64 curTime = 0;
         QueryPerformanceCounter((LARGE_INTEGER*)&curTime);
-        double result = (curTime-lastTime) * resolution;
-        lastTime = curTime;
+        double result = (curTime-mLastTime) * mResolution;
+        mLastTime = curTime;
         return result;
     }
 
 private:
-    double resolution;
-    __int64 lastTime;
+    double mResolution;
+    __int64 mLastTime;
 };
 
-class WindowContext
+struct SysAPI
 {
 public:
-    typedef int (*ExitCheckCallback)(void* data);
-    typedef void (*GameCallback)(void* data);
-    typedef void (*ResizeCallback)(void* data, int newW, int newH);
-
-    static WindowContext* open(int w, int h, const char* title)
+    SysAPI()
+        : mFrameTime(0.f)
+        , mMinWidth(1)
+        , mMinHeight(1)
+        , mReady(false)
+        , mDoFinish(false)
+        , mCallbackArg(NULL)
+        , mUpdateFun(NULL)
+        , mRenderFun(NULL)
+        , mOnCloseFun(NULL)
+        , mExitCheckFun(NULL)
+        , mResizeFun(NULL)
     {
-        WindowContext* ctx = new WindowContext();
-        ctx->instance = GetModuleHandle(NULL);
-
-        // Register a class first
-        {
-            WNDCLASS wc;
-            ZeroMemory(&wc, sizeof(wc));
-
-            wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-            wc.lpfnWndProc   = (WNDPROC) wndProc;
-            wc.cbClsExtra    = 0;
-            wc.cbWndExtra    = sizeof(void*) + sizeof(int);
-            wc.hInstance     = ctx->instance;
-            wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-            wc.hIcon         = LoadIcon(NULL, IDI_WINLOGO);
-            wc.lpszClassName = WND_CLASS_NAME;
-
-            ctx->classAtom = RegisterClass(&wc);
-        }
-
-        // Now we're ready to open the window
-        {
-            ctx->wndStyle = WS_CLIPSIBLINGS | WS_CLIPCHILDREN 
-                | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU 
-                | WS_MINIMIZEBOX |  WS_MAXIMIZEBOX | WS_SIZEBOX;
-            ctx->wndExStyle = WS_EX_APPWINDOW;
-
-            int wndW = -1;
-            int wndH = -1;
-            ctx->getWindowSize(w, h, wndW, wndH);
-
-            ctx->window = CreateWindowEx(
-               ctx->wndExStyle, WND_CLASS_NAME, 
-               title, ctx->wndStyle,
-               CW_USEDEFAULT, 0, wndW, wndH,
-               NULL, NULL, ctx->instance, ctx
-            );
-        }
-
-        // Create OpenGL context
-        {
-            ctx->dc = GetDC(ctx->window);
-            PIXELFORMATDESCRIPTOR pfd;
-            int bestPixelFormatId = getPixelFormatId(ctx->dc);
-            SetPixelFormat(ctx->dc, bestPixelFormatId, &pfd);
-            ctx->context = wglCreateContext(ctx->dc);
-            wglMakeCurrent(ctx->dc, ctx->context);
-        }
-
-        // And finally, make it visible
-        ShowWindow(ctx->window, SW_SHOWNORMAL);
-        BringWindowToTop(ctx->window);
-        SetForegroundWindow(ctx->window);
-        SetFocus(ctx->window);
-
-        ctx->initFrameTime();
-        ctx->ready = true;
-        return ctx;
     }
 
-    void setCallbackArgument(void* arg) {
-        callbackArg = arg;
-    }
-    void setUpdateCallback(GameCallback callback) {
-        updateFun = callback;
-    }
-    void setRenderCallback(GameCallback callback) {
-        renderFun = callback;
-    }
-    void setExitAskCallback(GameCallback callback) {
-        exitAskFun = callback;
-    }
-    void setExitCheckCallback(ExitCheckCallback callback) {
-        exitCheckFun = callback;
-    }
-    void setResizeCallback(ResizeCallback callback) {
-        resizeFun = callback;
-    }
-
-    float getFrameTime()
+    ~SysAPI()
     {
-        return frameTime;
+        wglMakeCurrent(NULL, NULL);
+        wglDeleteContext(mContext);
+        mContext = NULL;
+
+        ReleaseDC(mWindow, mDc);
+        mDc = NULL;
+
+        DestroyWindow(mWindow);
+        mWindow = NULL;
+
+        UnregisterClass(WND_CLASS_NAME, mInstance);
+        mClassAtom = 0;
     }
 
     void getClientSize(int& w, int& h)
     {
-        if (ready == false) { 
+        if (mReady == false) { 
             return; 
         }
 
         RECT area;
-        GetClientRect(window, &area);
+        GetClientRect(mWindow, &area);
         w = area.right;
         h = area.bottom;
     }
 
     void getDisplayResolution(int& w, int& h)
     {
-        HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        HMONITOR hmon = MonitorFromWindow(mWindow, MONITOR_DEFAULTTONEAREST);
         MONITORINFO minfo;
         minfo.cbSize = sizeof(MONITORINFO);
         GetMonitorInfo(hmon, &minfo);
@@ -217,139 +158,104 @@ public:
 
     void setClientSize(int w, int h)
     {
-        if (ready == false) { 
+        if (mReady == false) { 
             return; 
         }
 
         int wndW = -1;
         int wndH = -1;
         getWindowSize(w, h, wndW, wndH);
-        SetWindowPos(window, HWND_TOP, 0, 0, wndW, wndH,
+        SetWindowPos(mWindow, HWND_TOP, 0, 0, wndW, wndH,
                      SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
     }
 
     void setMinClientSize(int w, int h)
     {
-        minWidth = w;
-        minHeight = h;
+        mMinWidth = w;
+        mMinHeight = h;
     }
 
     void getMinWindowSize(int& w, int& h)
     {
-        getWindowSize(minWidth, minHeight, w, h);
+        getWindowSize(mMinWidth, mMinHeight, w, h);
     }
 
     void doResize(int newW, int newH)
     {
-        if (resizeFun) { 
-            resizeFun(callbackArg, newW, newH); 
+        if (mResizeFun) { 
+            mResizeFun(mCallbackArg, newW, newH); 
         }
     }
 
     void doUpdateStep()
     {
-        if (updateFun) { 
-            updateFun(callbackArg); 
+        if (mUpdateFun) { 
+            mUpdateFun(mCallbackArg); 
         }
     }
 
     void doRenderingStep()
     {
-        if (renderFun) {
-            renderFun(callbackArg);
-            SwapBuffers(dc);
+        if (mRenderFun) {
+            mRenderFun(mCallbackArg);
+            SwapBuffers(mDc);
         }
     }
 
     void run()
     {
-        if (ready == false) { 
+        if (mReady == false) { 
             return; 
         }
 
-        timer.reset();
+        mTimer.reset();
         float elapsedTime = 0.f;
 
-        while (doFinish == false) 
+        while (mDoFinish == false) 
         {
-            if (exitCheckFun && exitCheckFun(callbackArg)) { 
+            if (mExitCheckFun && mExitCheckFun(mCallbackArg)) { 
                 break; 
             }
 
-            elapsedTime += (float)timer.getDeltaSeconds();
+            elapsedTime += (float)mTimer.getDeltaSeconds();
 
             poll();
             // Do no more than 3 updates, if more then something is wrong
-            for (int i=0; i<3 && elapsedTime>frameTime; i++) {
+            for (int i=0; i<3 && elapsedTime>mFrameTime; i++) {
                 doUpdateStep();
-                elapsedTime -= frameTime;
+                elapsedTime -= mFrameTime;
             }
-            clamp(elapsedTime, 0.f, frameTime);
+            clamp(elapsedTime, 0.f, mFrameTime);
             doRenderingStep();
 
-            float currentFrameTime = (float)timer.getDeltaSeconds();
+            float currentFrameTime = (float)mTimer.getDeltaSeconds();
             elapsedTime += currentFrameTime;
-            float sleepTime = frameTime - currentFrameTime;
+            float sleepTime = mFrameTime - currentFrameTime;
             if (sleepTime > 0.f) {
                 Sleep((DWORD)floor(sleepTime * 1000));
             }
         }
     }
 
-    ~WindowContext()
-    {
-        wglMakeCurrent(NULL, NULL);
-        wglDeleteContext(context);
-        context = NULL;
-
-        ReleaseDC(window, dc);
-        dc = NULL;
-
-        DestroyWindow(window);
-        window = NULL;
-
-        UnregisterClass(WND_CLASS_NAME, instance);
-        classAtom = 0;
-    }
-
-private:
-    WindowContext(const WindowContext& ctx);
-    WindowContext& operator = (const WindowContext& other);
-
-    WindowContext()
-        : frameTime(0.f)
-        , minWidth(1)
-        , minHeight(1)
-        , ready(false)
-        , doFinish(false)
-        , callbackArg(NULL)
-        , updateFun(NULL)
-        , renderFun(NULL)
-        , exitAskFun(NULL)
-        , exitCheckFun(NULL)
-        , resizeFun(NULL)
-    {
-    }
-
     void initFrameTime()
     {
         int refreshRate = getDisplayRefreshRate();
-        frameTime = 1.f / (float)refreshRate;
-        frameTime -= 0.002f;
-        clamp(frameTime, 1/120.f, 1/30.f);
+        mFrameTime = 1.f / (float)refreshRate;
+        mFrameTime -= 0.002f;
+        clamp(mFrameTime, 1/120.f, 1/30.f);
     }
 
     void getWindowSize(int clientW, int clientH, int& wndW, int& wndH)
     {
         RECT rect = { 0, 0, clientW, clientH };
-        AdjustWindowRectEx(&rect, wndStyle, FALSE, wndExStyle);
+        AdjustWindowRectEx(&rect, mWndStyle, FALSE, mWndExStyle);
         wndW = rect.right - rect.left;
         wndH = rect.bottom - rect.top;
     }
 
     int getDisplayRefreshRate()
     {
-        HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        HMONITOR hmon = MonitorFromWindow(mWindow, MONITOR_DEFAULTTONEAREST);
         MONITORINFOEX minfo;
         minfo.cbSize = sizeof(minfo);
         GetMonitorInfo(hmon, &minfo);
@@ -372,10 +278,10 @@ private:
         {
             if (msg.message == WM_QUIT) 
             {
-                if (exitAskFun) { 
-                    exitAskFun(callbackArg); 
+                if (mOnCloseFun) { 
+                    mOnCloseFun(mCallbackArg); 
                 } else { 
-                    doFinish = true; 
+                    mDoFinish = true; 
                 }
             } 
             else 
@@ -386,30 +292,30 @@ private:
         }
     }
 
-    ATOM classAtom;
-    HINSTANCE instance;
-    DWORD wndStyle;
-    DWORD wndExStyle;
-    HWND window;
-    HDC dc;
-    HGLRC context;
+    ATOM mClassAtom;
+    HINSTANCE mInstance;
+    DWORD mWndStyle;
+    DWORD mWndExStyle;
+    HWND mWindow;
+    HDC mDc;
+    HGLRC mContext;
 
-    float frameTime;
+    float mFrameTime;
 
-    int minWidth;
-    int minHeight;
+    int mMinWidth;
+    int mMinHeight;
 
-    bool ready;
-    bool doFinish;
+    bool mReady;
+    bool mDoFinish;
 
-    void* callbackArg;
-    GameCallback updateFun;
-    GameCallback renderFun;
-    GameCallback exitAskFun;
-    ExitCheckCallback exitCheckFun;
-    ResizeCallback resizeFun;
+    void* mCallbackArg;
+    SysGameFun mUpdateFun;
+    SysGameFun mRenderFun;
+    SysGameFun mOnCloseFun;
+    SysExitCheckFun mExitCheckFun;
+    SysResizeFun mResizeFun;
 
-    HighFreqTimer timer;
+    HighFreqTimer mTimer;
 };
 
 static LRESULT CALLBACK wndProc(HWND   hwnd, 
@@ -417,7 +323,7 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
                                 WPARAM wParam, 
                                 LPARAM lParam)
 {
-    WindowContext* window = (WindowContext*)GetWindowLongPtr(hwnd, 0);
+    SysAPI* window = (SysAPI*)GetWindowLongPtr(hwnd, 0);
     
     switch (msg)
     {
@@ -463,111 +369,95 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-class Game
+SysAPI* Sys_OpenWindow(const WindowParams* p)
 {
-public:
-    Game()
-        : r(0.f), g(0.f), b(0.f)
-        , rd(0.001f), gd(0.005f), bd(0.0025f)
-        , finished(false), askCount(0)
+    SysAPI* ctx = new SysAPI();
+    ctx->mInstance = GetModuleHandle(NULL);
+
+    // Register a class first
     {
+        WNDCLASS wc;
+        ZeroMemory(&wc, sizeof(wc));
+
+        wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+        wc.lpfnWndProc   = (WNDPROC) wndProc;
+        wc.cbClsExtra    = 0;
+        wc.cbWndExtra    = sizeof(void*) + sizeof(int);
+        wc.hInstance     = ctx->mInstance;
+        wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+        wc.hIcon         = LoadIcon(NULL, IDI_WINLOGO);
+        wc.lpszClassName = WND_CLASS_NAME;
+
+        ctx->mClassAtom = RegisterClass(&wc);
     }
 
-    void update()
+    // Now we're ready to open the window
     {
-        if (r > 1.0f || r < 0.f) {
-            rd = -rd;
-        }
-        if (g > 1.0f || g < 0.f) {
-            gd = -gd;
-        }
-        if (b > 1.0f || b < 0.f) {
-            bd = -bd;
-        }
-        r += rd;
-        g += gd;
-        b += bd;
+        ctx->mWndStyle = WS_CLIPSIBLINGS | WS_CLIPCHILDREN 
+            | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU 
+            | WS_MINIMIZEBOX |  WS_MAXIMIZEBOX | WS_SIZEBOX;
+        ctx->mWndExStyle = WS_EX_APPWINDOW;
+
+        int wndW = -1;
+        int wndH = -1;
+        ctx->getWindowSize(p->width, p->height, wndW, wndH);
+
+        ctx->mWindow = CreateWindowEx(
+            ctx->mWndExStyle, WND_CLASS_NAME, 
+            p->windowTitle, ctx->mWndStyle,
+            CW_USEDEFAULT, 0, wndW, wndH,
+            NULL, NULL, ctx->mInstance, ctx
+        );
     }
 
-    void render()
+    // Create OpenGL context
     {
-        glClearColor(r, g, b, 1.f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        ctx->mDc = GetDC(ctx->mWindow);
+        PIXELFORMATDESCRIPTOR pfd;
+        int bestPixelFormatId = getPixelFormatId(ctx->mDc);
+        SetPixelFormat(ctx->mDc, bestPixelFormatId, &pfd);
+        ctx->mContext = wglCreateContext(ctx->mDc);
+        wglMakeCurrent(ctx->mDc, ctx->mContext);
     }
 
-    void askForExit()
-    {
-        askCount++;
-        if (askCount >= 2) {
-            finished = true;
-        }
-    }
+    // And finally, make it visible
+    ShowWindow(ctx->mWindow, SW_SHOWNORMAL);
+    BringWindowToTop(ctx->mWindow);
+    SetForegroundWindow(ctx->mWindow);
+    SetFocus(ctx->mWindow);
 
-    bool gameFinished()
-    {
-        return finished;
-    }
+    ctx->mCallbackArg = p->gameObject;
+    ctx->mUpdateFun = p->updateFun;
+    ctx->mRenderFun = p->renderFun;
+    ctx->mOnCloseFun = p->onCloseFun;
+    ctx->mResizeFun = p->onResizeFun;
+    ctx->mExitCheckFun = p->checkExitFun;
 
-private:
-    float r;
-    float g;
-    float b;
-
-    float rd;
-    float gd;
-    float bd;
-
-    bool finished;
-    int askCount;
-};
-
-void update(void* arg)
-{
-    if (arg != NULL) {
-        ((Game*)arg)->update();
-    }
+    ctx->initFrameTime();
+    ctx->mReady = true;
+    return ctx;
 }
 
-void render(void* arg)
+void Sys_RunApp(SysAPI* sys)
 {
-    if (arg != NULL) {
-        ((Game*)arg)->render();
-    }
+    sys->run();
 }
 
-void askForExit(void* arg)
+void Sys_ClearScreen(SysAPI* sys, float r, float g, float b)
 {
-    if (arg != NULL) {
-        ((Game*)arg)->askForExit();
-    }
+    glClearColor(r, g, b, 1.f);
+    glClear(GL_COLOR_BUFFER_BIT);
 }
 
-int checkForExit(void* arg)
+void Sys_Release(SysAPI* sys)
 {
-    if (arg != NULL) {
-        return ((Game*)arg)->gameFinished() ? 1 : 0;
-    }
-    return 0;
+    delete sys;
 }
 
-} // anonymous namespace
+extern "C" int Game_Run();
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    Game game;
-
-    WindowContext* window = WindowContext::open(640, 480, "My window");
-    window->setClientSize(800, 480);
-    window->setMinClientSize(320, 200);
-
-    window->setCallbackArgument(&game);
-    window->setUpdateCallback(update);
-    window->setRenderCallback(render);
-    window->setExitAskCallback(askForExit);
-    window->setExitCheckCallback(checkForExit);
-
-    window->run();
-    delete window;
-
-    return 0;
+    int result = Game_Run();
+    return result;
 }
