@@ -1,6 +1,12 @@
 #include <windows.h>
 #include <gl/GL.h>
 
+// TODO: add support for multiple monitors
+// * check if maximizing works on both monitors correctly
+// * check minimal window size
+// * check maximal window size
+// * check how resizing and positioning works
+
 namespace {
 
 const char WND_CLASS_NAME[] = "win32-tests";
@@ -150,6 +156,18 @@ public:
                      SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
     }
 
+    void setMinSize(int w, int h)
+    {
+        minWindowWidth = w;
+        minWindowHeight = h;
+    }
+
+    void getMinSize(int& w, int& h)
+    {
+        w = minWindowWidth;
+        h = minWindowHeight;
+    }
+
     void doResize(int newW, int newH)
     {
         if (resizeFun) { resizeFun(callbackArg, newW, newH); }
@@ -203,7 +221,9 @@ private:
     WindowContext& operator = (const WindowContext& other);
 
     WindowContext()
-        : ready(false)
+        : minWindowWidth(1)
+        , minWindowHeight(1)
+        , ready(false)
         , doFinish(false)
         , callbackArg(NULL)
         , updateFun(NULL)
@@ -247,6 +267,9 @@ private:
     HDC dc;
     HGLRC context;
 
+    int minWindowWidth;
+    int minWindowHeight;
+
     bool ready;
     bool doFinish;
 
@@ -277,6 +300,17 @@ static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
             glViewport(0, 0, w, h);
             window->doResize(w, h);
             window->doRenderingStep();
+            return 0;
+        }
+
+        case WM_GETMINMAXINFO:
+        {
+            MINMAXINFO* mmi = (MINMAXINFO*)lParam;
+            int minW = -1;
+            int minH = -1;
+            window->getMinSize(minW, minH);
+            mmi->ptMinTrackSize.x = minW;
+            mmi->ptMinTrackSize.y = minH;
             return 0;
         }
 
@@ -348,6 +382,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     window->setUpdateCallback(update);
     window->setRenderCallback(render);
     window->setClientSize(800, 480);
+    window->setMinSize(320, 200);
     window->run();
     delete window;
 
