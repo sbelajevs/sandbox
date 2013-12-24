@@ -42,9 +42,12 @@ int getPixelFormatId(const HDC& dc)
             continue;
         }
 
-        if (pfd.cRedBits == 8 && pfd.cGreenBits == 8 
-            && pfd.cBlueBits == 8 && pfd.cAlphaBits == 8
-            && pfd.cDepthBits == 24 && pfd.cStencilBits == 8)
+        if (pfd.cRedBits == 8 
+            && pfd.cGreenBits == 8 
+            && pfd.cBlueBits  == 8 
+            && pfd.cAlphaBits == 8
+            && pfd.cDepthBits == 24 
+            && pfd.cStencilBits == 8)
         {
             return i;
         }
@@ -142,7 +145,9 @@ public:
 
     void getClientSize(int& w, int& h)
     {
-        if (ready == false) { return; }
+        if (ready == false) { 
+            return; 
+        }
 
         RECT area;
         GetClientRect(window, &area);
@@ -164,25 +169,26 @@ public:
     {
         HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
         MONITORINFOEX minfo;
-        minfo.cbSize = sizeof(MONITORINFOEX);
+        minfo.cbSize = sizeof(minfo);
         GetMonitorInfo(hmon, &minfo);
 
         DEVMODE devMode;
-        devMode.dmSize = sizeof(DEVMODE);
+        devMode.dmSize = sizeof(devMode);
         devMode.dmDriverExtra = 0;
         EnumDisplaySettings(minfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode);
 
         int result = (int)devMode.dmDisplayFrequency;
-        if (result < 10 || result > 1000) { 
+        if (result < 10 || result > 120) { 
             result = 60; 
         }
-
         return result;
     }
 
     void setClientSize(int w, int h)
     {
-        if (ready == false) { return; }
+        if (ready == false) { 
+            return; 
+        }
 
         int wndW = -1;
         int wndH = -1;
@@ -204,30 +210,37 @@ public:
 
     void doResize(int newW, int newH)
     {
-        if (resizeFun) { resizeFun(callbackArg, newW, newH); }
+        if (resizeFun) { 
+            resizeFun(callbackArg, newW, newH); 
+        }
     }
 
     void doUpdateStep()
     {
-        if (updateFun) { updateFun(callbackArg); }
+        if (updateFun) { 
+            updateFun(callbackArg); 
+        }
     }
 
     void doRenderingStep()
     {
-        if (renderFun)
-        {
+        if (renderFun) {
             renderFun(callbackArg);
-            swapBuffers();
+            SwapBuffers(dc);
         }
     }
 
     void run()
     {
-        if (ready == false) { return; }
+        if (ready == false) { 
+            return; 
+        }
 
         while (doFinish == false) 
         {
-            if (exitCheckFun && exitCheckFun(callbackArg)) { break; }
+            if (exitCheckFun && exitCheckFun(callbackArg)) { 
+                break; 
+            }
 
             poll();
             doUpdateStep();
@@ -283,19 +296,20 @@ private:
         MSG msg;
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
-            if (msg.message == WM_QUIT) {
-                if (exitAskFun) { exitAskFun(callbackArg); }
-                else            { doFinish = true; }
-            } else {
+            if (msg.message == WM_QUIT) 
+            {
+                if (exitAskFun) { 
+                    exitAskFun(callbackArg); 
+                } else { 
+                    doFinish = true; 
+                }
+            } 
+            else 
+            {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
         }
-    }
-
-    void swapBuffers()
-    {
-        SwapBuffers(dc);
     }
 
     ATOM classAtom;
@@ -383,9 +397,15 @@ public:
 
     void update()
     {
-        if (r > 1.0f || r < 0.f) rd = -rd;
-        if (g > 1.0f || g < 0.f) gd = -gd;
-        if (b > 1.0f || b < 0.f) bd = -bd;
+        if (r > 1.0f || r < 0.f) {
+            rd = -rd;
+        }
+        if (g > 1.0f || g < 0.f) {
+            gd = -gd;
+        }
+        if (b > 1.0f || b < 0.f) {
+            bd = -bd;
+        }
         r += rd;
         g += gd;
         b += bd;
