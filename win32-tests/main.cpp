@@ -56,6 +56,7 @@ int getPixelFormatId(const HDC& dc)
 class WindowContext
 {
 public:
+    typedef int (*ExitCheckCallback)(void* data);
     typedef void (*GameCallback)(void* data);
     typedef void (*ResizeCallback)(void* data, int newW, int newH);
 
@@ -120,23 +121,22 @@ public:
         return ctx;
     }
 
-    void setCallbackArgument(void* arg)
-    {
+    void setCallbackArgument(void* arg) {
         callbackArg = arg;
     }
-
-    void setUpdateCallback(GameCallback callback)
-    {
+    void setUpdateCallback(GameCallback callback) {
         updateFun = callback;
     }
-
-    void setRenderCallback(GameCallback callback)
-    {
+    void setRenderCallback(GameCallback callback) {
         renderFun = callback;
     }
-
-    void setResizeCallback(ResizeCallback callback)
-    {
+    void setExitAskCallback(GameCallback callback) {
+        exitAskFun = callback;
+    }
+    void setExitCheckCallback(ExitCheckCallback callback) {
+        exitCheckFun = callback;
+    }
+    void setResizeCallback(ResizeCallback callback) {
         resizeFun = callback;
     }
 
@@ -207,6 +207,8 @@ public:
 
         while (doFinish == false) 
         {
+            if (exitCheckFun && exitCheckFun(callbackArg)) { break; }
+
             poll();
             doUpdateStep();
             doRenderingStep();
@@ -242,6 +244,8 @@ private:
         , callbackArg(NULL)
         , updateFun(NULL)
         , renderFun(NULL)
+        , exitAskFun(NULL)
+        , exitCheckFun(NULL)
         , resizeFun(NULL)
     {
     }
@@ -260,7 +264,8 @@ private:
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT) {
-                doFinish = true;
+                if (exitAskFun) { exitAskFun(callbackArg); }
+                else            { doFinish = true; }
             } else {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
@@ -290,6 +295,8 @@ private:
     void* callbackArg;
     GameCallback updateFun;
     GameCallback renderFun;
+    GameCallback exitAskFun;
+    ExitCheckCallback exitCheckFun;
     ResizeCallback resizeFun;
 };
 
@@ -347,7 +354,10 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
 class Game
 {
 public:
-    Game(): r(0.f), g(0.f), b(0.f), rd(0.001f), gd(0.005f), bd(0.0025f)
+    Game()
+        : r(0.f), g(0.f), b(0.f)
+        , rd(0.001f), gd(0.005f), bd(0.0025f)
+        , finished(false), askCount(0)
     {
     }
 
@@ -367,6 +377,19 @@ public:
         glClear(GL_COLOR_BUFFER_BIT);
     }
 
+    void askForExit()
+    {
+        askCount++;
+        if (askCount >= 2) {
+            finished = true;
+        }
+    }
+
+    bool gameFinished()
+    {
+        return finished;
+    }
+
 private:
     float r;
     float g;
@@ -375,6 +398,9 @@ private:
     float rd;
     float gd;
     float bd;
+
+    bool finished;
+    int askCount;
 };
 
 void update(void* arg)
@@ -391,6 +417,21 @@ void render(void* arg)
     }
 }
 
+void askForExit(void* arg)
+{
+    if (arg != NULL) {
+        ((Game*)arg)->askForExit();
+    }
+}
+
+int checkForExit(void* arg)
+{
+    if (arg != NULL) {
+        return ((Game*)arg)->gameFinished() ? 1 : 0;
+    }
+    return 0;
+}
+
 } // anonymous namespace
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
@@ -398,11 +439,15 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
     Game game;
 
     WindowContext* window = WindowContext::open(640, 480, "My window");
+    window->setClientSize(800, 480);
+    window->setMinClientSize(320, 200);
+
     window->setCallbackArgument(&game);
     window->setUpdateCallback(update);
     window->setRenderCallback(render);
-    window->setClientSize(800, 480);
-    window->setMinClientSize(320, 200);
+    window->setExitAskCallback(askForExit);
+    window->setExitCheckCallback(checkForExit);
+
     window->run();
     delete window;
 
