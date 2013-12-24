@@ -11,25 +11,28 @@ namespace {
 
 const char WND_CLASS_NAME[] = "win32-tests";
 
-LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
 
 int getPixelFormatId(const HDC& dc)
 {
-    int count = DescribePixelFormat(dc, 1, sizeof(PIXELFORMATDESCRIPTOR), NULL);
+    int count = DescribePixelFormat(
+        dc, 1, sizeof(PIXELFORMATDESCRIPTOR), NULL);
 
     for (int i=1; i<=count; i++)
     {
-        // TODO: choose the closest from all if perfect match is not found
+        // TODO: choose the best from all
         PIXELFORMATDESCRIPTOR pfd;
         DescribePixelFormat(dc, i, sizeof(PIXELFORMATDESCRIPTOR), &pfd);
 
-        static const DWORD REQUIRED_FLAGS = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+        static const DWORD REQUIRED_FLAGS = 
+            PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
         if ((pfd.dwFlags & REQUIRED_FLAGS) != REQUIRED_FLAGS)
         {
             continue;
         }
 
-        if (!(pfd.dwFlags & PFD_GENERIC_ACCELERATED) && (pfd.dwFlags & PFD_GENERIC_FORMAT))
+        if (!(pfd.dwFlags & PFD_GENERIC_ACCELERATED) 
+            && (pfd.dwFlags & PFD_GENERIC_FORMAT))
         {
             continue;
         }
@@ -39,7 +42,8 @@ int getPixelFormatId(const HDC& dc)
             continue;
         }
 
-        if (pfd.cRedBits == 8 && pfd.cGreenBits == 8 && pfd.cBlueBits == 8 && pfd.cAlphaBits == 8
+        if (pfd.cRedBits == 8 && pfd.cGreenBits == 8 
+            && pfd.cBlueBits == 8 && pfd.cAlphaBits == 8
             && pfd.cDepthBits == 24 && pfd.cStencilBits == 8)
         {
             return i;
@@ -84,13 +88,14 @@ public:
                 | WS_MINIMIZEBOX |  WS_MAXIMIZEBOX | WS_SIZEBOX;
             ctx->wndExStyle = WS_EX_APPWINDOW;
 
-            int fullW = -1;
-            int fullH = -1;
-            ctx->getFullWindowSize(w, h, fullW, fullH);
+            int wndW = -1;
+            int wndH = -1;
+            ctx->getWindowSize(w, h, wndW, wndH);
 
             ctx->window = CreateWindowEx(
-               ctx->wndExStyle, WND_CLASS_NAME, "My window", ctx->wndStyle,
-               x, y, fullW, fullH,
+               ctx->wndExStyle, WND_CLASS_NAME, 
+               "My window", ctx->wndStyle,
+               x, y, wndW, wndH,
                NULL, NULL, ctx->instance, ctx
             );
         }
@@ -149,23 +154,23 @@ public:
     {
         if (ready == false) { return; }
 
-        int fullW = -1;
-        int fullH = -1;
-        getFullWindowSize(w, h, fullW, fullH);
-        SetWindowPos(window, HWND_TOP, 0, 0, fullW, fullH,
+        int wndW = -1;
+        int wndH = -1;
+        getWindowSize(w, h, wndW, wndH);
+        SetWindowPos(window, HWND_TOP, 0, 0, wndW, wndH,
                      SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
     }
 
     void setMinSize(int w, int h)
     {
-        minWindowWidth = w;
-        minWindowHeight = h;
+        minWidth = w;
+        minHeight = h;
     }
 
     void getMinSize(int& w, int& h)
     {
-        w = minWindowWidth;
-        h = minWindowHeight;
+        w = minWidth;
+        h = minHeight;
     }
 
     void doResize(int newW, int newH)
@@ -221,8 +226,8 @@ private:
     WindowContext& operator = (const WindowContext& other);
 
     WindowContext()
-        : minWindowWidth(1)
-        , minWindowHeight(1)
+        : minWidth(1)
+        , minHeight(1)
         , ready(false)
         , doFinish(false)
         , callbackArg(NULL)
@@ -232,12 +237,12 @@ private:
     {
     }
 
-    void getFullWindowSize(int clientW, int clientH, int& fullW, int& fullH)
+    void getWindowSize(int clientW, int clientH, int& wndW, int& wndH)
     {
         RECT rect = { 0, 0, clientW, clientH };
         AdjustWindowRectEx(&rect, wndStyle, FALSE, wndExStyle);
-        fullW = rect.right - rect.left;
-        fullH = rect.bottom - rect.top;
+        wndW = rect.right - rect.left;
+        wndH = rect.bottom - rect.top;
     }
 
     void poll()
@@ -267,8 +272,8 @@ private:
     HDC dc;
     HGLRC context;
 
-    int minWindowWidth;
-    int minWindowHeight;
+    int minWidth;
+    int minHeight;
 
     bool ready;
     bool doFinish;
@@ -279,12 +284,18 @@ private:
     ResizeCallback resizeFun;
 };
 
-static LRESULT CALLBACK wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK wndProc(HWND   hwnd, 
+                                UINT   msg, 
+                                WPARAM wParam, 
+                                LPARAM lParam)
 {
     WindowContext* window = (WindowContext*)GetWindowLongPtr(hwnd, 0);
     
     switch (msg)
     {
+        // TODO: see if we really need to handle something else here, 
+        // like minimzation and focus lost/gain
+
         case WM_CREATE:
         {
             CREATESTRUCT* cs = (CREATESTRUCT*)lParam;
