@@ -3,6 +3,7 @@
 #include <gl/GL.h>
 
 #include <math.h>
+#include <stdlib.h>
 
 #include "system.h"
 
@@ -120,11 +121,88 @@ private:
     __int64 mLastTime;
 };
 
+const unsigned char DEFAULT_VERTEX_SHADER[] = {
+    0x23, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x20, 0x31, 0x32, 0x30, 0x0D, 0x0A, 0x0D, 0x0A, 
+    0x2F, 0x2F, 0x20, 0x49, 0x6E, 0x70, 0x75, 0x74, 0x20, 0x76, 0x65, 0x72, 0x74, 0x65, 0x78, 0x20, 
+    0x64, 0x61, 0x74, 0x61, 0x2C, 0x20, 0x64, 0x69, 0x66, 0x66, 0x65, 0x72, 0x65, 0x6E, 0x74, 0x20, 
+    0x66, 0x6F, 0x72, 0x20, 0x61, 0x6C, 0x6C, 0x20, 0x65, 0x78, 0x65, 0x63, 0x75, 0x74, 0x69, 0x6F, 
+    0x6E, 0x73, 0x20, 0x6F, 0x66, 0x20, 0x74, 0x68, 0x69, 0x73, 0x20, 0x73, 0x68, 0x61, 0x64, 0x65, 
+    0x72, 0x2E, 0x0D, 0x0A, 0x61, 0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65, 0x20, 0x76, 0x65, 
+    0x63, 0x32, 0x20, 0x76, 0x65, 0x72, 0x74, 0x65, 0x78, 0x50, 0x6F, 0x73, 0x69, 0x74, 0x69, 0x6F, 
+    0x6E, 0x5F, 0x6D, 0x6F, 0x64, 0x65, 0x6C, 0x73, 0x70, 0x61, 0x63, 0x65, 0x3B, 0x0D, 0x0A, 0x61, 
+    0x74, 0x74, 0x72, 0x69, 0x62, 0x75, 0x74, 0x65, 0x20, 0x76, 0x65, 0x63, 0x32, 0x20, 0x76, 0x65, 
+    0x72, 0x74, 0x65, 0x78, 0x55, 0x76, 0x3B, 0x0D, 0x0A, 0x0D, 0x0A, 0x76, 0x61, 0x72, 0x79, 0x69, 
+    0x6E, 0x67, 0x20, 0x76, 0x65, 0x63, 0x32, 0x20, 0x76, 0x55, 0x76, 0x3B, 0x0D, 0x0A, 0x0D, 0x0A, 
+    0x75, 0x6E, 0x69, 0x66, 0x6F, 0x72, 0x6D, 0x20, 0x6D, 0x61, 0x74, 0x34, 0x20, 0x4D, 0x56, 0x50, 
+    0x3B, 0x0D, 0x0A, 0x0D, 0x0A, 0x76, 0x6F, 0x69, 0x64, 0x20, 0x6D, 0x61, 0x69, 0x6E, 0x28, 0x29, 
+    0x0D, 0x0A, 0x7B, 0x0D, 0x0A, 0x20, 0x20, 0x20, 0x20, 0x67, 0x6C, 0x5F, 0x50, 0x6F, 0x73, 0x69, 
+    0x74, 0x69, 0x6F, 0x6E, 0x20, 0x3D, 0x20, 0x20, 0x4D, 0x56, 0x50, 0x20, 0x2A, 0x20, 0x76, 0x65, 
+    0x63, 0x34, 0x28, 0x76, 0x65, 0x72, 0x74, 0x65, 0x78, 0x50, 0x6F, 0x73, 0x69, 0x74, 0x69, 0x6F, 
+    0x6E, 0x5F, 0x6D, 0x6F, 0x64, 0x65, 0x6C, 0x73, 0x70, 0x61, 0x63, 0x65, 0x2C, 0x20, 0x30, 0x2C, 
+    0x20, 0x31, 0x29, 0x3B, 0x0D, 0x0A, 0x20, 0x20, 0x20, 0x20, 0x76, 0x55, 0x76, 0x20, 0x3D, 0x20, 
+    0x76, 0x65, 0x72, 0x74, 0x65, 0x78, 0x55, 0x76, 0x3B, 0x0D, 0x0A, 0x7D, 0x0D, 0x0A, 0x00, 
+};
+
+const unsigned char DEFAULT_FRAG_SHADER[] = {
+    0x23, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6F, 0x6E, 0x20, 0x31, 0x32, 0x30, 0x0D, 0x0A, 0x0D, 0x0A, 
+    0x76, 0x61, 0x72, 0x79, 0x69, 0x6E, 0x67, 0x20, 0x76, 0x65, 0x63, 0x32, 0x20, 0x76, 0x55, 0x76, 
+    0x3B, 0x0D, 0x0A, 0x0D, 0x0A, 0x75, 0x6E, 0x69, 0x66, 0x6F, 0x72, 0x6D, 0x20, 0x73, 0x61, 0x6D, 
+    0x70, 0x6C, 0x65, 0x72, 0x32, 0x44, 0x20, 0x73, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x72, 0x3B, 0x0D, 
+    0x0A, 0x0D, 0x0A, 0x76, 0x6F, 0x69, 0x64, 0x20, 0x6D, 0x61, 0x69, 0x6E, 0x28, 0x29, 0x0D, 0x0A, 
+    0x7B, 0x0D, 0x0A, 0x20, 0x20, 0x20, 0x20, 0x67, 0x6C, 0x5F, 0x46, 0x72, 0x61, 0x67, 0x43, 0x6F, 
+    0x6C, 0x6F, 0x72, 0x20, 0x3D, 0x20, 0x74, 0x65, 0x78, 0x74, 0x75, 0x72, 0x65, 0x32, 0x44, 0x28, 
+    0x73, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x72, 0x2C, 0x20, 0x76, 0x55, 0x76, 0x29, 0x3B, 0x2F, 0x2F, 
+    0x20, 0x2A, 0x20, 0x30, 0x2E, 0x38, 0x20, 0x2B, 0x20, 0x76, 0x65, 0x63, 0x34, 0x28, 0x30, 0x2E, 
+    0x38, 0x38, 0x2C, 0x20, 0x30, 0x2E, 0x36, 0x36, 0x2C, 0x20, 0x30, 0x2E, 0x36, 0x35, 0x2C, 0x20, 
+    0x31, 0x2E, 0x30, 0x29, 0x20, 0x2A, 0x20, 0x30, 0x2E, 0x32, 0x3B, 0x0D, 0x0A, 0x7D, 0x0D, 0x0A, 
+    0x00, 
+};
+
 struct Graphics
 {
     Graphics()
-        : textureLen(0)
+        : initialized(false)
+        , textureLen(0)
     {
+    }
+
+    ~Graphics()
+    {
+        if (initialized == false) {
+            return;
+        }
+
+        DeleteVertexArrays(1, &vertexArray);
+        glDeleteTextures((GLsizei)textureLen, textures);
+    }
+
+    void init()
+    {
+        GenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)wglGetProcAddress("glGenVertexArrays");
+        BindVertexArray = (PFNGLBINDVERTEXARRAYPROC)wglGetProcAddress("glBindVertexArray");
+        DeleteVertexArrays = (PFNGLDELETEVERTEXARRAYSPROC)wglGetProcAddress("glDeleteVertexArrays");
+        CreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
+        ShaderSource = (PFNGLSHADERSOURCEPROC)wglGetProcAddress("glShaderSource");
+        CompileShader = (PFNGLCOMPILESHADERPROC)wglGetProcAddress("glCompileShader");
+        GetShaderiv = (PFNGLGETSHADERIVPROC)wglGetProcAddress("glGetShaderiv");
+        GetShaderInfoLog = (PFNGLGETSHADERINFOLOGPROC)wglGetProcAddress("glGetShaderInfoLog");
+        CreateProgram = (PFNGLCREATEPROGRAMPROC)wglGetProcAddress("glCreateProgram");
+        AttachShader = (PFNGLATTACHSHADERPROC)wglGetProcAddress("glAttachShader");
+        LinkProgram = (PFNGLLINKPROGRAMPROC)wglGetProcAddress("glLinkProgram");
+        DeleteShader = (PFNGLDELETESHADERPROC)wglGetProcAddress("glDeleteShader");
+        GetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv");
+        GetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)wglGetProcAddress("glGetProgramInfoLog");
+        GetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress("glGetUniformLocation");
+        // TODO: add sanity checks for obtained procedures
+
+        GenVertexArrays(1, &vertexArray);
+        BindVertexArray(vertexArray);
+
+        texShader.id = buildShaderProgram((char*)DEFAULT_VERTEX_SHADER, (char*)DEFAULT_FRAG_SHADER);
+        texShader.uniforms[UNIFORM_MVP] = GetUniformLocation(texShader.id, "MVP");
+        texShader.uniforms[UNIFORM_TEX] = GetUniformLocation(texShader.id, "sampler");
+
+        initialized = true;
     }
 
     int addTexture(const unsigned char* data, int w, int h)
@@ -149,18 +227,126 @@ struct Graphics
                      0, GL_RGBA, 
                      GL_UNSIGNED_BYTE, data);
 
-        textureIds[textureLen] = id;
+        textures[textureLen] = id;
         return textureLen++;
     }
 
-    GLuint textureIds[16];
+private:
+    GLuint compileShader(const char* shaderSrc, GLuint type)
+    {
+        GLuint shaderId = CreateShader(type);
+        ShaderSource(shaderId, 1, &shaderSrc, NULL);
+        CompileShader(shaderId);
 
+        GLint result = GL_FALSE;
+        GetShaderiv(shaderId, GL_COMPILE_STATUS, &result);
+        if (result != GL_TRUE)
+        {
+            int infoLogLen = 0;
+            GetShaderiv(shaderId, GL_INFO_LOG_LENGTH, &infoLogLen);
+            clamp(infoLogLen, 0, 1023);
+            char errorMsg[1024];
+            GetShaderInfoLog(shaderId, infoLogLen, NULL, errorMsg);
+            //fprintf(stderr, "Error compiling shader:\n%s\n", shaderSrc);
+            //fprintf(stderr, "%s\n", errorMsg);
+            exit(EXIT_FAILURE);
+        }
+
+        return shaderId;
+    }
+    
+    GLuint buildShaderProgram(const char* vertexShaderSrc, const char* fragmentShaderSrc)
+    {
+        GLuint vertexShaderId = compileShader(vertexShaderSrc, GL_VERTEX_SHADER);
+        GLuint fragmentShaderId = compileShader(fragmentShaderSrc, GL_FRAGMENT_SHADER);
+
+        // Link
+        GLuint programId = CreateProgram();
+        AttachShader(programId, vertexShaderId);
+        AttachShader(programId, fragmentShaderId);
+        LinkProgram(programId);
+
+        // Free resources
+        DeleteShader(vertexShaderId);
+        DeleteShader(fragmentShaderId);
+
+        // Check for errors
+        GLint result = GL_FALSE;
+        GetProgramiv(programId, GL_LINK_STATUS, &result);
+        if (result != GL_TRUE)
+        {
+            int infoLogLen = 0;
+            GetProgramiv(programId, GL_INFO_LOG_LENGTH, &infoLogLen);
+            clamp(infoLogLen, 0, 1023);
+            char errorMsg[1024];
+            GetProgramInfoLog(programId, infoLogLen, NULL, errorMsg);
+            //fprintf(stderr, "%s\n", errorMsg);
+            exit(EXIT_FAILURE);
+        }
+  
+        return programId;
+    }
+
+    static const unsigned int UNIFORMS_MAX = 3;
+    static const unsigned int UNIFORM_MVP = 0;
+    static const unsigned int UNIFORM_TEX = 1;
+
+    struct ShaderProgram
+    {
+        unsigned int id;
+        unsigned int uniforms[UNIFORMS_MAX];
+    };
+
+    bool initialized;
+    GLuint vertexArray;
+    GLuint textures[16];
     int textureLen;
 
-private:
+    ShaderProgram texShader;
+
+    #define GLAPIENTRY __stdcall
+    typedef char GLchar;
+
+    typedef void (GLAPIENTRY * PFNGLGENVERTEXARRAYSPROC)(GLsizei n, GLuint* arrs);
+    typedef void (GLAPIENTRY * PFNGLBINDVERTEXARRAYPROC)(GLuint arr);
+    typedef void (GLAPIENTRY * PFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint* arrays);
+    typedef GLuint (GLAPIENTRY * PFNGLCREATESHADERPROC)(GLenum type);
+    typedef void (GLAPIENTRY * PFNGLSHADERSOURCEPROC)(GLuint shader, GLsizei count, const GLchar** strings, const GLint* lengths);
+    typedef void (GLAPIENTRY * PFNGLCOMPILESHADERPROC)(GLuint shader);
+    typedef void (GLAPIENTRY * PFNGLGETSHADERIVPROC)(GLuint shader, GLenum pname, GLint* param);
+    typedef void (GLAPIENTRY * PFNGLGETSHADERINFOLOGPROC)(GLuint shader, GLsizei bufSize, GLsizei* length, GLchar* infoLog);
+    typedef GLuint (GLAPIENTRY * PFNGLCREATEPROGRAMPROC)(void);
+    typedef void (GLAPIENTRY * PFNGLATTACHSHADERPROC)(GLuint program, GLuint shader);
+    typedef void (GLAPIENTRY * PFNGLLINKPROGRAMPROC)(GLuint program);
+    typedef void (GLAPIENTRY * PFNGLDELETESHADERPROC)(GLuint shader);
+    typedef void (GLAPIENTRY * PFNGLGETPROGRAMIVPROC) (GLuint program, GLenum pname, GLint* param);
+    typedef void (GLAPIENTRY * PFNGLGETPROGRAMINFOLOGPROC) (GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog);
+    typedef GLint (GLAPIENTRY * PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const GLchar* name);
+
+    PFNGLGENVERTEXARRAYSPROC GenVertexArrays;
+    PFNGLBINDVERTEXARRAYPROC BindVertexArray;
+    PFNGLDELETEVERTEXARRAYSPROC DeleteVertexArrays;
+    PFNGLCREATESHADERPROC CreateShader;
+    PFNGLSHADERSOURCEPROC ShaderSource;
+    PFNGLCOMPILESHADERPROC CompileShader;
+    PFNGLGETSHADERIVPROC GetShaderiv;
+    PFNGLGETSHADERINFOLOGPROC GetShaderInfoLog;
+    PFNGLCREATEPROGRAMPROC CreateProgram;
+    PFNGLATTACHSHADERPROC AttachShader;
+    PFNGLLINKPROGRAMPROC LinkProgram;
+    PFNGLDELETESHADERPROC DeleteShader;
+    PFNGLGETPROGRAMIVPROC GetProgramiv;
+    PFNGLGETPROGRAMINFOLOGPROC GetProgramInfoLog;
+    PFNGLGETUNIFORMLOCATIONPROC GetUniformLocation;
+
     static const int GL_GENERATE_MIPMAP = 0x8191;
     static const int GL_TEXTURE_FILTER_CONTROL = 0x8500;
     static const int GL_TEXTURE_LOD_BIAS = 0x8501;
+    static const int GL_FRAGMENT_SHADER = 0x8B30;
+    static const int GL_VERTEX_SHADER = 0x8B31;
+    static const int GL_COMPILE_STATUS = 0x8B81;
+    static const int GL_INFO_LOG_LENGTH = 0x8B84;
+    static const int GL_LINK_STATUS = 0x8B82;
 };
 
 struct Win32Window
@@ -431,6 +617,7 @@ SysAPI* Sys_OpenWindow(const WindowParams* p)
     SetFocus(ctx->mWindow);
 
     ctx->initFrameTime();
+    ctx->gfx.init();
 
     ctx->mCallbackArg = p->gameObject;
     ctx->mUpdateFun = p->updateFun;
