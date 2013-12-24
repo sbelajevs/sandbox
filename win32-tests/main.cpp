@@ -1,5 +1,8 @@
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <gl/GL.h>
+
+#include <math.h>
 
 // TODO: add support for multiple monitors
 // * check if maximizing works on both monitors correctly
@@ -12,6 +15,16 @@ namespace {
 const char WND_CLASS_NAME[] = "win32-tests";
 
 LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
+
+template <class T>
+void clamp(T& value, const T& min, const T& max)
+{
+    if (value < min) {
+        value = min;
+    } else if (value > max) {
+        value = max;
+    }
+}
 
 int getPixelFormatId(const HDC& dc)
 {
@@ -55,6 +68,37 @@ int getPixelFormatId(const HDC& dc)
 
     return 0;
 }
+
+class HighFreqTimer
+{
+public:
+    HighFreqTimer()
+    {
+        // TODO: we're assuming that it doesn't fail
+        __int64 freq = 1;
+        QueryPerformanceFrequency((LARGE_INTEGER*)&freq);
+        resolution = 1.0/freq;
+        reset();
+    }
+
+    void reset()
+    {
+        QueryPerformanceCounter((LARGE_INTEGER*) &lastTime);
+    }
+
+    double getDeltaSeconds()
+    {
+        __int64 curTime = 0;
+        QueryPerformanceCounter((LARGE_INTEGER*)&curTime);
+        double result = (curTime-lastTime) * resolution;
+        lastTime = curTime;
+        return result;
+    }
+
+private:
+    double resolution;
+    __int64 lastTime;
+};
 
 class WindowContext
 {
@@ -120,6 +164,7 @@ public:
         SetForegroundWindow(ctx->window);
         SetFocus(ctx->window);
 
+        ctx->initFrameTime();
         ctx->ready = true;
         return ctx;
     }
@@ -143,6 +188,11 @@ public:
         resizeFun = callback;
     }
 
+    float getFrameTime()
+    {
+        return frameTime;
+    }
+
     void getClientSize(int& w, int& h)
     {
         if (ready == false) { 
@@ -163,25 +213,6 @@ public:
         GetMonitorInfo(hmon, &minfo);
         w = minfo.rcMonitor.right - minfo.rcMonitor.left;
         h = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
-    }
-
-    int getDisplayRefreshRate()
-    {
-        HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
-        MONITORINFOEX minfo;
-        minfo.cbSize = sizeof(minfo);
-        GetMonitorInfo(hmon, &minfo);
-
-        DEVMODE devMode;
-        devMode.dmSize = sizeof(devMode);
-        devMode.dmDriverExtra = 0;
-        EnumDisplaySettings(minfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode);
-
-        int result = (int)devMode.dmDisplayFrequency;
-        if (result < 10 || result > 120) { 
-            result = 60; 
-        }
-        return result;
     }
 
     void setClientSize(int w, int h)
@@ -236,16 +267,32 @@ public:
             return; 
         }
 
+        timer.reset();
+        float elapsedTime = 0.f;
+
         while (doFinish == false) 
         {
             if (exitCheckFun && exitCheckFun(callbackArg)) { 
                 break; 
             }
 
+            elapsedTime += (float)timer.getDeltaSeconds();
+
             poll();
-            doUpdateStep();
+            // Do no more than 3 updates, if more then something is wrong
+            for (int i=0; i<3 && elapsedTime>frameTime; i++) {
+                doUpdateStep();
+                elapsedTime -= frameTime;
+            }
+            clamp(elapsedTime, 0.f, frameTime);
             doRenderingStep();
-            Sleep(15);
+
+            float currentFrameTime = (float)timer.getDeltaSeconds();
+            elapsedTime += currentFrameTime;
+            float sleepTime = frameTime - currentFrameTime;
+            if (sleepTime > 0.f) {
+                Sleep((DWORD)floor(sleepTime * 1000));
+            }
         }
     }
 
@@ -270,7 +317,8 @@ private:
     WindowContext& operator = (const WindowContext& other);
 
     WindowContext()
-        : minWidth(1)
+        : frameTime(0.f)
+        , minWidth(1)
         , minHeight(1)
         , ready(false)
         , doFinish(false)
@@ -283,12 +331,38 @@ private:
     {
     }
 
+    void initFrameTime()
+    {
+        int refreshRate = getDisplayRefreshRate();
+        frameTime = 1.f / (float)refreshRate;
+        frameTime -= 0.002f;
+        clamp(frameTime, 1/120.f, 1/30.f);
+    }
+
     void getWindowSize(int clientW, int clientH, int& wndW, int& wndH)
     {
         RECT rect = { 0, 0, clientW, clientH };
         AdjustWindowRectEx(&rect, wndStyle, FALSE, wndExStyle);
         wndW = rect.right - rect.left;
         wndH = rect.bottom - rect.top;
+    }
+
+    int getDisplayRefreshRate()
+    {
+        HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        MONITORINFOEX minfo;
+        minfo.cbSize = sizeof(minfo);
+        GetMonitorInfo(hmon, &minfo);
+
+        DEVMODE devMode;
+        devMode.dmSize = sizeof(devMode);
+        devMode.dmDriverExtra = 0;
+        EnumDisplaySettings(minfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode);
+
+        int result = (int)devMode.dmDisplayFrequency;
+        clamp(result, 30, 120);
+
+        return result;
     }
 
     void poll()
@@ -320,6 +394,8 @@ private:
     HDC dc;
     HGLRC context;
 
+    float frameTime;
+
     int minWidth;
     int minHeight;
 
@@ -332,6 +408,8 @@ private:
     GameCallback exitAskFun;
     ExitCheckCallback exitCheckFun;
     ResizeCallback resizeFun;
+
+    HighFreqTimer timer;
 };
 
 static LRESULT CALLBACK wndProc(HWND   hwnd, 
