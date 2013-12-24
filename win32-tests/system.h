@@ -33,6 +33,8 @@ float Sys_GetFrameTime(SysAPI* sys);
 void Sys_RunApp(SysAPI* sys);
 void Sys_Release(SysAPI* sys);
 
+int Sys_LoadTexture(SysAPI* sys, const unsigned char* data, int w, int h);
+
 void Sys_ClearScreen(SysAPI* sys, float r, float g, float b);
 
 #ifdef __cplusplus

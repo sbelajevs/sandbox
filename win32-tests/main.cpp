@@ -120,6 +120,49 @@ private:
     __int64 mLastTime;
 };
 
+struct Graphics
+{
+    Graphics()
+        : textureLen(0)
+    {
+    }
+
+    int addTexture(const unsigned char* data, int w, int h)
+    {
+        GLuint id;
+
+        glGenTextures(1, &id);
+        glBindTexture(GL_TEXTURE_2D, id);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+
+        glTexEnvf(GL_TEXTURE_FILTER_CONTROL, GL_TEXTURE_LOD_BIAS, -0.25f);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 
+                     (GLsizei)w, (GLsizei)h, 
+                     0, GL_RGBA, 
+                     GL_UNSIGNED_BYTE, data);
+
+        textureIds[textureLen] = id;
+        return textureLen++;
+    }
+
+    GLuint textureIds[16];
+
+    int textureLen;
+
+private:
+    static const int GL_GENERATE_MIPMAP = 0x8191;
+    static const int GL_TEXTURE_FILTER_CONTROL = 0x8500;
+    static const int GL_TEXTURE_LOD_BIAS = 0x8501;
+};
+
 struct Win32Window
 {
 public:
@@ -266,6 +309,8 @@ public:
     SysGameFun mOnCloseFun;
     SysExitCheckFun mExitCheckFun;
     SysResizeFun mResizeFun;
+
+    Graphics gfx;
 };
 
 static LRESULT CALLBACK wndProc(HWND   hwnd, 
@@ -452,6 +497,11 @@ void Sys_RunApp(SysAPI* sys)
              Sleep((DWORD)floor(sleepTime * 1000));
          }
     }
+}
+
+int Sys_LoadTexture(SysAPI* sys, const unsigned char* data, int w, int h)
+{
+    return sys->wnd.gfx.addTexture(data, w, h);
 }
 
 void Sys_ClearScreen(SysAPI* sys, float r, float g, float b)
