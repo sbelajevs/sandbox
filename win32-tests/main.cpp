@@ -59,7 +59,7 @@ public:
     typedef void (*GameCallback)(void* data);
     typedef void (*ResizeCallback)(void* data, int newW, int newH);
 
-    static WindowContext* open(int x, int y, int w, int h)
+    static WindowContext* open(int w, int h, const char* title)
     {
         WindowContext* ctx = new WindowContext();
         ctx->instance = GetModuleHandle(NULL);
@@ -94,8 +94,8 @@ public:
 
             ctx->window = CreateWindowEx(
                ctx->wndExStyle, WND_CLASS_NAME, 
-               "My window", ctx->wndStyle,
-               x, y, wndW, wndH,
+               title, ctx->wndStyle,
+               CW_USEDEFAULT, 0, wndW, wndH,
                NULL, NULL, ctx->instance, ctx
             );
         }
@@ -303,7 +303,7 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
     switch (msg)
     {
         // TODO: see if we really need to handle something else here, 
-        // like minimzation and focus lost/gain
+        // like minimization and focus lost/gain
 
         case WM_CREATE:
         {
@@ -397,7 +397,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
     Game game;
 
-    WindowContext* window = WindowContext::open(100, 100, 640, 480);
+    WindowContext* window = WindowContext::open(640, 480, "My window");
     window->setCallbackArgument(&game);
     window->setUpdateCallback(update);
     window->setRenderCallback(render);
