@@ -25,9 +25,15 @@ struct WindowParams
 
 SysAPI* Sys_OpenWindow(const WindowParams* params);
 
+void Sys_SetMinClientSize(SysAPI* sys, int minW, int minH);
+void Sys_SetClientSize(SysAPI* sys, int w, int h);
+void Sys_GetDisplayRes(SysAPI* sys, int* w, int* h);
+float Sys_GetFrameTime(SysAPI* sys);
+
 void Sys_RunApp(SysAPI* sys);
-void Sys_ClearScreen(SysAPI* sys, float r, float g, float b);
 void Sys_Release(SysAPI* sys);
+
+void Sys_ClearScreen(SysAPI* sys, float r, float g, float b);
 
 #ifdef __cplusplus
 }

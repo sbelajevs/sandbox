@@ -12,6 +12,8 @@
 // * check maximal window size
 // * check how resizing and positioning works
 
+namespace {
+
 const char WND_CLASS_NAME[] = "win32-tests";
 
 LRESULT CALLBACK wndProc(HWND, UINT, WPARAM, LPARAM);
@@ -24,6 +26,24 @@ void clamp(T& value, const T& min, const T& max)
     } else if (value > max) {
         value = max;
     }
+}
+
+int getDisplayRefreshRate(HWND window)
+{
+    HMONITOR hmon = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+    MONITORINFOEX minfo;
+    minfo.cbSize = sizeof(minfo);
+    GetMonitorInfo(hmon, &minfo);
+
+    DEVMODE devMode;
+    devMode.dmSize = sizeof(devMode);
+    devMode.dmDriverExtra = 0;
+    EnumDisplaySettings(minfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode);
+
+    int result = (int)devMode.dmDisplayFrequency;
+    clamp(result, 30, 120);
+
+    return result;
 }
 
 int getPixelFormatId(const HDC& dc)
@@ -69,10 +89,10 @@ int getPixelFormatId(const HDC& dc)
     return 0;
 }
 
-class HighFreqTimer
+class HighResTimer
 {
 public:
-    HighFreqTimer()
+    HighResTimer()
     {
         // TODO: we're assuming that it doesn't fail
         __int64 freq = 1;
@@ -100,14 +120,13 @@ private:
     __int64 mLastTime;
 };
 
-struct SysAPI
+struct Win32Window
 {
 public:
-    SysAPI()
+    Win32Window()
         : mFrameTime(0.f)
         , mMinWidth(1)
         , mMinHeight(1)
-        , mReady(false)
         , mDoFinish(false)
         , mCallbackArg(NULL)
         , mUpdateFun(NULL)
@@ -118,7 +137,7 @@ public:
     {
     }
 
-    ~SysAPI()
+    ~Win32Window()
     {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(mContext);
@@ -136,32 +155,14 @@ public:
 
     void getClientSize(int& w, int& h)
     {
-        if (mReady == false) { 
-            return; 
-        }
-
         RECT area;
         GetClientRect(mWindow, &area);
         w = area.right;
         h = area.bottom;
     }
 
-    void getDisplayResolution(int& w, int& h)
-    {
-        HMONITOR hmon = MonitorFromWindow(mWindow, MONITOR_DEFAULTTONEAREST);
-        MONITORINFO minfo;
-        minfo.cbSize = sizeof(MONITORINFO);
-        GetMonitorInfo(hmon, &minfo);
-        w = minfo.rcMonitor.right - minfo.rcMonitor.left;
-        h = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
-    }
-
     void setClientSize(int w, int h)
     {
-        if (mReady == false) { 
-            return; 
-        }
-
         int wndW = -1;
         int wndH = -1;
         getWindowSize(w, h, wndW, wndH);
@@ -202,44 +203,14 @@ public:
         }
     }
 
-    void run()
+    bool doCheckForExit()
     {
-        if (mReady == false) { 
-            return; 
-        }
-
-        mTimer.reset();
-        float elapsedTime = 0.f;
-
-        while (mDoFinish == false) 
-        {
-            if (mExitCheckFun && mExitCheckFun(mCallbackArg)) { 
-                break; 
-            }
-
-            elapsedTime += (float)mTimer.getDeltaSeconds();
-
-            poll();
-            // Do no more than 3 updates, if more then something is wrong
-            for (int i=0; i<3 && elapsedTime>mFrameTime; i++) {
-                doUpdateStep();
-                elapsedTime -= mFrameTime;
-            }
-            clamp(elapsedTime, 0.f, mFrameTime);
-            doRenderingStep();
-
-            float currentFrameTime = (float)mTimer.getDeltaSeconds();
-            elapsedTime += currentFrameTime;
-            float sleepTime = mFrameTime - currentFrameTime;
-            if (sleepTime > 0.f) {
-                Sleep((DWORD)floor(sleepTime * 1000));
-            }
-        }
+        return mExitCheckFun && mExitCheckFun(mCallbackArg);
     }
 
     void initFrameTime()
     {
-        int refreshRate = getDisplayRefreshRate();
+        int refreshRate = getDisplayRefreshRate(mWindow);
         mFrameTime = 1.f / (float)refreshRate;
         mFrameTime -= 0.002f;
         clamp(mFrameTime, 1/120.f, 1/30.f);
@@ -251,24 +222,6 @@ public:
         AdjustWindowRectEx(&rect, mWndStyle, FALSE, mWndExStyle);
         wndW = rect.right - rect.left;
         wndH = rect.bottom - rect.top;
-    }
-
-    int getDisplayRefreshRate()
-    {
-        HMONITOR hmon = MonitorFromWindow(mWindow, MONITOR_DEFAULTTONEAREST);
-        MONITORINFOEX minfo;
-        minfo.cbSize = sizeof(minfo);
-        GetMonitorInfo(hmon, &minfo);
-
-        DEVMODE devMode;
-        devMode.dmSize = sizeof(devMode);
-        devMode.dmDriverExtra = 0;
-        EnumDisplaySettings(minfo.szDevice, ENUM_CURRENT_SETTINGS, &devMode);
-
-        int result = (int)devMode.dmDisplayFrequency;
-        clamp(result, 30, 120);
-
-        return result;
     }
 
     void poll()
@@ -305,7 +258,6 @@ public:
     int mMinWidth;
     int mMinHeight;
 
-    bool mReady;
     bool mDoFinish;
 
     void* mCallbackArg;
@@ -314,8 +266,6 @@ public:
     SysGameFun mOnCloseFun;
     SysExitCheckFun mExitCheckFun;
     SysResizeFun mResizeFun;
-
-    HighFreqTimer mTimer;
 };
 
 static LRESULT CALLBACK wndProc(HWND   hwnd, 
@@ -323,7 +273,7 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
                                 WPARAM wParam, 
                                 LPARAM lParam)
 {
-    SysAPI* window = (SysAPI*)GetWindowLongPtr(hwnd, 0);
+    Win32Window* window = (Win32Window*)GetWindowLongPtr(hwnd, 0);
     
     switch (msg)
     {
@@ -369,9 +319,18 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+}  // anonymous namespace
+
+
+struct SysAPI
+{
+    Win32Window wnd;
+};
+
 SysAPI* Sys_OpenWindow(const WindowParams* p)
 {
-    SysAPI* ctx = new SysAPI();
+    SysAPI* sys = new SysAPI();
+    Win32Window* ctx = &sys->wnd;
     ctx->mInstance = GetModuleHandle(NULL);
 
     // Register a class first
@@ -426,6 +385,8 @@ SysAPI* Sys_OpenWindow(const WindowParams* p)
     SetForegroundWindow(ctx->mWindow);
     SetFocus(ctx->mWindow);
 
+    ctx->initFrameTime();
+
     ctx->mCallbackArg = p->gameObject;
     ctx->mUpdateFun = p->updateFun;
     ctx->mRenderFun = p->renderFun;
@@ -433,14 +394,64 @@ SysAPI* Sys_OpenWindow(const WindowParams* p)
     ctx->mResizeFun = p->onResizeFun;
     ctx->mExitCheckFun = p->checkExitFun;
 
-    ctx->initFrameTime();
-    ctx->mReady = true;
-    return ctx;
+    return sys;
+}
+
+void Sys_SetMinClientSize(SysAPI* sys, int minW, int minH)
+{
+    sys->wnd.setMinClientSize(minW, minH);
+}
+
+void Sys_SetClientSize(SysAPI* sys, int w, int h)
+{
+    sys->wnd.setClientSize(w, h);
+}
+
+void Sys_GetDisplayRes(SysAPI* sys, int* w, int* h)
+{
+    HMONITOR hmon = MonitorFromWindow(sys->wnd.mWindow, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO minfo;
+    minfo.cbSize = sizeof(MONITORINFO);
+    GetMonitorInfo(hmon, &minfo);
+    *w = minfo.rcMonitor.right  - minfo.rcMonitor.left;
+    *h = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
+}
+
+float Sys_GetFrameTime(SysAPI* sys)
+{
+    return sys->wnd.mFrameTime;
 }
 
 void Sys_RunApp(SysAPI* sys)
 {
-    sys->run();
+     const float FRAME_TIME = sys->wnd.mFrameTime;
+     float elapsedTime = 0.f;
+     HighResTimer timer;
+
+     while (sys->wnd.mDoFinish == false) 
+     {
+         if (sys->wnd.doCheckForExit()) {
+             break;
+         }
+
+         elapsedTime += (float)timer.getDeltaSeconds();
+
+         sys->wnd.poll();
+         // Do no more than 3 updates, if more then something is wrong
+         for (int i=0; i<3 && elapsedTime>FRAME_TIME; i++) {
+             sys->wnd.doUpdateStep();
+             elapsedTime -= FRAME_TIME;
+         }
+         clamp(elapsedTime, 0.f, FRAME_TIME);
+         sys->wnd.doRenderingStep();
+
+         float currentFrameTime = (float)timer.getDeltaSeconds();
+         elapsedTime += currentFrameTime;
+         float sleepTime = FRAME_TIME - currentFrameTime;
+         if (sleepTime > 0.f) {
+             Sleep((DWORD)floor(sleepTime * 1000));
+         }
+    }
 }
 
 void Sys_ClearScreen(SysAPI* sys, float r, float g, float b)

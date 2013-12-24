@@ -111,6 +111,12 @@ int Game_Run()
     };
 
     game.sys = Sys_OpenWindow(&params);
+    Sys_SetMinClientSize(game.sys, 320, 200);
+    int displayW = -1;
+    int displayH = -1;
+    Sys_GetDisplayRes(game.sys, &displayW, &displayH);
+    Sys_SetClientSize(game.sys, displayW/2, displayH/2);
+
     Sys_RunApp(game.sys);
     Sys_Release(game.sys);
 
