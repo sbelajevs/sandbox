@@ -35,7 +35,15 @@ void Sys_Release(SysAPI* sys);
 
 int Sys_LoadTexture(SysAPI* sys, const unsigned char* data, int w, int h);
 
+void Sys_StartFrame(SysAPI* sys);
+void Sys_SetTexture(SysAPI* sys, int hTexture);
 void Sys_ClearScreen(SysAPI* sys, float r, float g, float b);
+void Sys_Render(SysAPI* sys, 
+                float sx, float sy, 
+                float sw, float sh, 
+                float tx, float ty, 
+                float tw, float th);
+void Sys_EndFrame(SysAPI* sys);
 
 #ifdef __cplusplus
 }

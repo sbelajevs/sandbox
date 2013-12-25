@@ -163,6 +163,8 @@ struct Graphics
     Graphics()
         : initialized(false)
         , textureLen(0)
+        , activeHTexture(0)
+        , verticesLen(0)
     {
     }
 
@@ -193,6 +195,17 @@ struct Graphics
         GetProgramiv = (PFNGLGETPROGRAMIVPROC)wglGetProcAddress("glGetProgramiv");
         GetProgramInfoLog = (PFNGLGETPROGRAMINFOLOGPROC)wglGetProcAddress("glGetProgramInfoLog");
         GetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)wglGetProcAddress("glGetUniformLocation");
+        UseProgram = (PFNGLUSEPROGRAMPROC)wglGetProcAddress("glUseProgram");
+        UniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)wglGetProcAddress("glUniformMatrix4fv");
+        ActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress("glActiveTexture");
+        Uniform1i = (PFNGLUNIFORM1IPROC)wglGetProcAddress("glUniform1i");
+        GenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress("glGenBuffers");
+        BindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress("glBindBuffer");
+        BufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress("glBufferData");
+        EnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glEnableVertexAttribArray");
+        VertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress("glVertexAttribPointer");
+        DisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
+        DeleteBuffers = (PFNGLDELETEBUFFERSPROC)wglGetProcAddress("glDeleteBuffers");
         // TODO: add sanity checks for obtained procedures
 
         GenVertexArrays(1, &vertexArray);
@@ -247,6 +260,85 @@ struct Graphics
 
         textures[textureLen] = id;
         return textureLen++;
+    }
+
+    void setTexture(int hTexture)
+    {
+        if (hTexture != activeHTexture) {
+            flush();
+            activeHTexture = hTexture;
+        }
+    }
+
+    void flush()
+    {
+        if (verticesLen == 0) {
+            return;
+        }
+
+        UseProgram(texShader.id);
+        UniformMatrix4fv(texShader.uniforms[UNIFORM_MVP], 1, GL_FALSE, orthoProj);
+
+        ActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textures[activeHTexture]);
+        Uniform1i(texShader.uniforms[UNIFORM_TEX], 0);
+
+        GLuint buf;
+        GenBuffers(1, &buf);
+        BindBuffer(GL_ARRAY_BUFFER, buf);
+        BufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+        // vertices
+        EnableVertexAttribArray(0);
+        BindBuffer(GL_ARRAY_BUFFER, buf);
+        VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
+
+        // texture
+        EnableVertexAttribArray(1);
+        BindBuffer(GL_ARRAY_BUFFER, buf);
+        VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)((char*)&vertices[0].tx - (char*)vertices));
+
+        // Draw the triangles!
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); 
+
+        DisableVertexAttribArray(0);
+        DisableVertexAttribArray(1);
+
+        DeleteBuffers(1, &buf);
+
+        verticesLen = 0;
+    }
+
+    void renderQuad(float qx, float qy, float qw, float qh,
+                    float tx, float ty, float tw, float th)
+    {
+        if (verticesLen > VERTEX_BUF_SIZE - 4) {
+            flush();
+        }
+
+        vertices[verticesLen].x = qx;
+        vertices[verticesLen].y = qy;
+        vertices[verticesLen].tx = tx;
+        vertices[verticesLen].ty = ty;
+        verticesLen++;
+
+        vertices[verticesLen].x = qx;
+        vertices[verticesLen].y = qy + qh;
+        vertices[verticesLen].tx = tx;
+        vertices[verticesLen].ty = ty + th;
+        verticesLen++;
+
+        vertices[verticesLen].x = qx + qw;
+        vertices[verticesLen].y = qy;
+        vertices[verticesLen].tx = tx + tw;
+        vertices[verticesLen].ty = ty;
+        verticesLen++;
+
+        vertices[verticesLen].x = qx + qw;
+        vertices[verticesLen].y = qy + qh;
+        vertices[verticesLen].tx = tx + tw;
+        vertices[verticesLen].ty = ty + th;
+        verticesLen++;
     }
 
 private:
@@ -305,26 +397,41 @@ private:
         return programId;
     }
 
+    bool initialized;
+
+    GLuint textures[16];
+    int textureLen;
+
+    int activeHTexture;
+
+    struct Vertex
+    {
+        float x;
+        float y;
+        float tx;
+        float ty;
+    };
+    static const int VERTEX_BUF_SIZE = 1024;
+    Vertex vertices[VERTEX_BUF_SIZE];
+    int verticesLen;
+
     static const unsigned int UNIFORMS_MAX = 3;
     static const unsigned int UNIFORM_MVP = 0;
     static const unsigned int UNIFORM_TEX = 1;
-
     struct ShaderProgram
     {
         unsigned int id;
         unsigned int uniforms[UNIFORMS_MAX];
     };
+    ShaderProgram texShader;
 
-    bool initialized;
     GLuint vertexArray;
-    GLuint textures[16];
-    int textureLen;
 
     float orthoProj[16];
-    ShaderProgram texShader;
 
     #define GLAPIENTRY __stdcall
     typedef char GLchar;
+    typedef ptrdiff_t GLsizeiptr;
 
     typedef void (GLAPIENTRY * PFNGLGENVERTEXARRAYSPROC)(GLsizei n, GLuint* arrs);
     typedef void (GLAPIENTRY * PFNGLBINDVERTEXARRAYPROC)(GLuint arr);
@@ -338,9 +445,20 @@ private:
     typedef void (GLAPIENTRY * PFNGLATTACHSHADERPROC)(GLuint program, GLuint shader);
     typedef void (GLAPIENTRY * PFNGLLINKPROGRAMPROC)(GLuint program);
     typedef void (GLAPIENTRY * PFNGLDELETESHADERPROC)(GLuint shader);
-    typedef void (GLAPIENTRY * PFNGLGETPROGRAMIVPROC) (GLuint program, GLenum pname, GLint* param);
-    typedef void (GLAPIENTRY * PFNGLGETPROGRAMINFOLOGPROC) (GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog);
-    typedef GLint (GLAPIENTRY * PFNGLGETUNIFORMLOCATIONPROC) (GLuint program, const GLchar* name);
+    typedef void (GLAPIENTRY * PFNGLGETPROGRAMIVPROC)(GLuint program, GLenum pname, GLint* param);
+    typedef void (GLAPIENTRY * PFNGLGETPROGRAMINFOLOGPROC)(GLuint program, GLsizei bufSize, GLsizei* length, GLchar* infoLog);
+    typedef GLint (GLAPIENTRY * PFNGLGETUNIFORMLOCATIONPROC)(GLuint program, const GLchar* name);
+    typedef void (GLAPIENTRY * PFNGLUSEPROGRAMPROC)(GLuint program);
+    typedef void (GLAPIENTRY * PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat* value);
+    typedef void (GLAPIENTRY * PFNGLACTIVETEXTUREPROC)(GLenum texture);
+    typedef void (GLAPIENTRY * PFNGLUNIFORM1IPROC)(GLint location, GLint v0);
+    typedef void (GLAPIENTRY * PFNGLGENBUFFERSPROC)(GLsizei n, GLuint* buffers);
+    typedef void (GLAPIENTRY * PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);
+    typedef void (GLAPIENTRY * PFNGLBUFFERDATAPROC)(GLenum target, GLsizeiptr size, const GLvoid* data, GLenum usage);
+    typedef void (GLAPIENTRY * PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint);
+    typedef void (GLAPIENTRY * PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint);
+    typedef void (GLAPIENTRY * PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid* pointer);
+    typedef void (GLAPIENTRY * PFNGLDELETEBUFFERSPROC)(GLsizei n, const GLuint* buffers);
 
     PFNGLGENVERTEXARRAYSPROC GenVertexArrays;
     PFNGLBINDVERTEXARRAYPROC BindVertexArray;
@@ -357,6 +475,17 @@ private:
     PFNGLGETPROGRAMIVPROC GetProgramiv;
     PFNGLGETPROGRAMINFOLOGPROC GetProgramInfoLog;
     PFNGLGETUNIFORMLOCATIONPROC GetUniformLocation;
+    PFNGLUSEPROGRAMPROC UseProgram;
+    PFNGLUNIFORMMATRIX4FVPROC UniformMatrix4fv;
+    PFNGLACTIVETEXTUREPROC ActiveTexture;
+    PFNGLUNIFORM1IPROC Uniform1i;
+    PFNGLGENBUFFERSPROC GenBuffers;
+    PFNGLBINDBUFFERPROC BindBuffer;
+    PFNGLBUFFERDATAPROC BufferData;
+    PFNGLENABLEVERTEXATTRIBARRAYPROC EnableVertexAttribArray;
+    PFNGLDISABLEVERTEXATTRIBARRAYPROC DisableVertexAttribArray;
+    PFNGLVERTEXATTRIBPOINTERPROC VertexAttribPointer;
+    PFNGLDELETEBUFFERSPROC DeleteBuffers;
 
     static const int GL_GENERATE_MIPMAP = 0x8191;
     static const int GL_TEXTURE_FILTER_CONTROL = 0x8500;
@@ -366,6 +495,9 @@ private:
     static const int GL_COMPILE_STATUS = 0x8B81;
     static const int GL_INFO_LOG_LENGTH = 0x8B84;
     static const int GL_LINK_STATUS = 0x8B82;
+    static const int GL_TEXTURE0 = 0x84C0;
+    static const int GL_ARRAY_BUFFER = 0x8892;
+    static const int GL_STATIC_DRAW = 0x88E4;
 };
 
 struct Win32Window
@@ -711,10 +843,34 @@ int Sys_LoadTexture(SysAPI* sys, const unsigned char* data, int w, int h)
     return sys->wnd.gfx.addTexture(data, w, h);
 }
 
+void Sys_StartFrame(SysAPI* sys)
+{
+    // Do nothing here
+}
+
+void Sys_SetTexture(SysAPI* sys, int hTexture)
+{
+    sys->wnd.gfx.setTexture(hTexture);
+}
+
 void Sys_ClearScreen(SysAPI* sys, float r, float g, float b)
 {
     glClearColor(r, g, b, 1.f);
     glClear(GL_COLOR_BUFFER_BIT);
+}
+
+void Sys_Render(SysAPI* sys, 
+                float sx, float sy, 
+                float sw, float sh, 
+                float tx, float ty, 
+                float tw, float th)
+{
+    sys->wnd.gfx.renderQuad(sx, sy, sw, sh, tx, ty, tw, th);
+}
+
+void Sys_EndFrame(SysAPI* sys)
+{
+    sys->wnd.gfx.flush();
 }
 
 void Sys_Release(SysAPI* sys)
