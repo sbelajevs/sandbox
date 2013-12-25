@@ -290,12 +290,10 @@ struct Graphics
 
         // vertices
         EnableVertexAttribArray(0);
-        BindBuffer(GL_ARRAY_BUFFER, buf);
         VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
 
         // texture
         EnableVertexAttribArray(1);
-        BindBuffer(GL_ARRAY_BUFFER, buf);
         VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)((char*)&vertices[0].tx - (char*)vertices));
 
         // Draw the triangles!
@@ -581,6 +579,7 @@ public:
     {
         if (mRenderFun) {
             mRenderFun(mCallbackArg);
+            gfx.flush();
             SwapBuffers(mDc);
         }
     }
@@ -843,11 +842,6 @@ int Sys_LoadTexture(SysAPI* sys, const unsigned char* data, int w, int h)
     return sys->wnd.gfx.addTexture(data, w, h);
 }
 
-void Sys_StartFrame(SysAPI* sys)
-{
-    // Do nothing here
-}
-
 void Sys_SetTexture(SysAPI* sys, int hTexture)
 {
     sys->wnd.gfx.setTexture(hTexture);
@@ -866,11 +860,6 @@ void Sys_Render(SysAPI* sys,
                 float tw, float th)
 {
     sys->wnd.gfx.renderQuad(sx, sy, sw, sh, tx, ty, tw, th);
-}
-
-void Sys_EndFrame(SysAPI* sys)
-{
-    sys->wnd.gfx.flush();
 }
 
 void Sys_Release(SysAPI* sys)
