@@ -174,8 +174,9 @@ struct Graphics
             return;
         }
 
-        DeleteVertexArrays(1, &vertexArray);
+        DeleteBuffers(1, &arrayBuffer);
         glDeleteTextures((GLsizei)textureLen, textures);
+        DeleteVertexArrays(1, &vertexArray);
     }
 
     void init()
@@ -206,10 +207,15 @@ struct Graphics
         VertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress("glVertexAttribPointer");
         DisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
         DeleteBuffers = (PFNGLDELETEBUFFERSPROC)wglGetProcAddress("glDeleteBuffers");
+        BufferSubData = (PFNGLBUFFERSUBDATAPROC)wglGetProcAddress("glBufferSubData");
         // TODO: add sanity checks for obtained procedures
 
         GenVertexArrays(1, &vertexArray);
         BindVertexArray(vertexArray);
+
+        GenBuffers(1, &arrayBuffer);
+        BindBuffer(GL_ARRAY_BUFFER, arrayBuffer);
+        BufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
 
         texShader.id = buildShaderProgram((char*)DEFAULT_VERTEX_SHADER, (char*)DEFAULT_FRAG_SHADER);
         texShader.uniforms[UNIFORM_MVP] = GetUniformLocation(texShader.id, "MVP");
@@ -279,20 +285,18 @@ struct Graphics
         UseProgram(texShader.id);
         UniformMatrix4fv(texShader.uniforms[UNIFORM_MVP], 1, GL_FALSE, orthoProj);
 
-        ActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textures[activeHTexture]);
-        Uniform1i(texShader.uniforms[UNIFORM_TEX], 0);
-
-        GLuint buf;
-        GenBuffers(1, &buf);
-        BindBuffer(GL_ARRAY_BUFFER, buf);
-        BufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        BindBuffer(GL_ARRAY_BUFFER, arrayBuffer);
+        BufferSubData(GL_ARRAY_BUFFER, 0, verticesLen*sizeof(Vertex), vertices);
 
         // vertices
         EnableVertexAttribArray(0);
         VertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0);
 
         // texture
+        ActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, textures[activeHTexture]);
+        Uniform1i(texShader.uniforms[UNIFORM_TEX], 0);
+
         EnableVertexAttribArray(1);
         VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)((char*)&vertices[0].tx - (char*)vertices));
 
@@ -301,8 +305,6 @@ struct Graphics
 
         DisableVertexAttribArray(0);
         DisableVertexAttribArray(1);
-
-        DeleteBuffers(1, &buf);
 
         verticesLen = 0;
     }
@@ -421,11 +423,13 @@ private:
     ShaderProgram texShader;
 
     GLuint vertexArray;
+    GLuint arrayBuffer;
 
     float orthoProj[16];
 
     #define GLAPIENTRY __stdcall
     typedef char GLchar;
+    typedef ptrdiff_t GLintptr;
     typedef ptrdiff_t GLsizeiptr;
 
     typedef void (GLAPIENTRY * PFNGLGENVERTEXARRAYSPROC)(GLsizei n, GLuint* arrs);
@@ -454,6 +458,7 @@ private:
     typedef void (GLAPIENTRY * PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint);
     typedef void (GLAPIENTRY * PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const GLvoid* pointer);
     typedef void (GLAPIENTRY * PFNGLDELETEBUFFERSPROC)(GLsizei n, const GLuint* buffers);
+    typedef void (GLAPIENTRY * PFNGLBUFFERSUBDATAPROC) (GLenum target, GLintptr offset, GLsizeiptr size, const GLvoid* data);
 
     PFNGLGENVERTEXARRAYSPROC GenVertexArrays;
     PFNGLBINDVERTEXARRAYPROC BindVertexArray;
@@ -481,6 +486,7 @@ private:
     PFNGLDISABLEVERTEXATTRIBARRAYPROC DisableVertexAttribArray;
     PFNGLVERTEXATTRIBPOINTERPROC VertexAttribPointer;
     PFNGLDELETEBUFFERSPROC DeleteBuffers;
+    PFNGLBUFFERSUBDATAPROC BufferSubData;
 
     static const int GL_GENERATE_MIPMAP = 0x8191;
     static const int GL_TEXTURE_FILTER_CONTROL = 0x8500;
@@ -494,6 +500,7 @@ private:
     static const int GL_ARRAY_BUFFER = 0x8892;
     static const int GL_STATIC_DRAW = 0x88E4;
     static const int GL_CLAMP_TO_EDGE = 0x812F;
+    static const int GL_DYNAMIC_DRAW = 0x88E8;
 };
 
 struct Win32Window
