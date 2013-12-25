@@ -830,7 +830,11 @@ void Sys_RunApp(SysAPI* sys)
              elapsedTime -= FRAME_TIME;
          }
          clamp(elapsedTime, 0.f, FRAME_TIME);
-         sys->wnd.doRenderingStep();
+
+         bool isMinimized = IsIconic(sys->wnd.mWindow) != 0;
+         if (isMinimized == false) {
+            sys->wnd.doRenderingStep();
+         }
 
          float currentFrameTime = (float)timer.getDeltaSeconds();
          elapsedTime += currentFrameTime;
