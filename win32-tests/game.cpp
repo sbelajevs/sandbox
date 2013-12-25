@@ -13,6 +13,30 @@ public:
     {
     }
 
+    void init()
+    {
+        typedef unsigned char byte;
+        static const int WIDTH = 256;
+        static const int HEIGHT = 256;
+
+        byte* bitmap = new byte[WIDTH*HEIGHT*4];
+
+        for (int y=0; y<HEIGHT; y++) {
+            for (int x=0; x<WIDTH; x++) 
+            {
+                int pos = (y*WIDTH+x)*4;
+                bitmap[pos+0] = (x+y)/2;
+                bitmap[pos+1] = (x+y)/2;
+                bitmap[pos+2] = (x+y)/2;
+                bitmap[pos+3] = 255;
+            }
+        }
+
+        Sys_LoadTexture(sys, bitmap, WIDTH, HEIGHT);
+
+        delete[] bitmap;
+    }
+
     void update()
     {
         if (r > 1.0f || r < 0.f) {
@@ -31,9 +55,22 @@ public:
 
     void render()
     {
-        if (sys != NULL_PTR) {
-            Sys_ClearScreen(sys, r, g, b);
+        if (sys == NULL_PTR) {
+            return;
         }
+
+        Sys_ClearScreen(sys, r, g, b);
+        float baseX = r * width;
+        float baseY = g * height;
+        for (int i=0; i<10; i++) {
+            Sys_Render(sys, baseX+i*10.f, baseY+i*10.f, 50.f, 50.f, 0.f, 0.f, 1.f, 1.f);
+        }
+    }
+
+    void resize(int w, int h)
+    {
+        width = w;
+        height = h;
     }
 
     void askForExit()
@@ -61,6 +98,9 @@ private:
     bool finished;
     int askCount;
 
+    int width;
+    int height;
+
 public:
     SysAPI* sys;
 };
@@ -86,6 +126,13 @@ void onClose(void* arg)
     }
 }
 
+void onResize(void* arg, int w, int h)
+{
+    if (arg != NULL_PTR) {
+        ((Game*)arg)->resize(w, h);
+    }
+}
+
 int checkForExit(void* arg)
 {
     if (arg != NULL_PTR) {
@@ -106,7 +153,7 @@ int Game_Run()
         update,
         render,
         onClose,
-        NULL_PTR,
+        onResize,
         checkForExit
     };
 
@@ -116,6 +163,8 @@ int Game_Run()
     int displayH = -1;
     Sys_GetDisplayRes(game.sys, &displayW, &displayH);
     Sys_SetClientSize(game.sys, displayW/2, displayH/2);
+
+    game.init();
 
     Sys_RunApp(game.sys);
     Sys_Release(game.sys);

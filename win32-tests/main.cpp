@@ -245,8 +245,8 @@ struct Graphics
 
         glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -297,7 +297,7 @@ struct Graphics
         VertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)((char*)&vertices[0].tx - (char*)vertices));
 
         // Draw the triangles!
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); 
+        glDrawArrays(GL_TRIANGLES, 0, verticesLen); 
 
         DisableVertexAttribArray(0);
         DisableVertexAttribArray(1);
@@ -310,33 +310,21 @@ struct Graphics
     void renderQuad(float qx, float qy, float qw, float qh,
                     float tx, float ty, float tw, float th)
     {
-        if (verticesLen > VERTEX_BUF_SIZE - 4) {
+        if (verticesLen > VERTEX_BUF_SIZE - 6) {
             flush();
         }
 
-        vertices[verticesLen].x = qx;
-        vertices[verticesLen].y = qy;
-        vertices[verticesLen].tx = tx;
-        vertices[verticesLen].ty = ty;
-        verticesLen++;
+        Vertex* v = &vertices[verticesLen];
 
-        vertices[verticesLen].x = qx;
-        vertices[verticesLen].y = qy + qh;
-        vertices[verticesLen].tx = tx;
-        vertices[verticesLen].ty = ty + th;
-        verticesLen++;
+        v[0] = Vertex(qx, qy, tx, ty);
+        v[1] = Vertex(qx, qy+qh, tx, ty+th);
+        v[2] = Vertex(qx+qw, qy, tx+tw, ty);
 
-        vertices[verticesLen].x = qx + qw;
-        vertices[verticesLen].y = qy;
-        vertices[verticesLen].tx = tx + tw;
-        vertices[verticesLen].ty = ty;
-        verticesLen++;
+        v[3] = v[1];
+        v[4] = Vertex(qx+qw, qy+qh, tx+tw, ty+th);
+        v[5] = v[2];
 
-        vertices[verticesLen].x = qx + qw;
-        vertices[verticesLen].y = qy + qh;
-        vertices[verticesLen].tx = tx + tw;
-        vertices[verticesLen].ty = ty + th;
-        verticesLen++;
+        verticesLen += 6;
     }
 
 private:
@@ -408,8 +396,17 @@ private:
         float y;
         float tx;
         float ty;
+
+        Vertex(): x(0.f), y(0.f), tx(0.f), ty(0.f)
+        {
+        }
+
+        Vertex(float aX, float aY, float aTx, float aTy)
+            : x(aX), y(aY), tx(aTx), ty(aTy)
+        {
+        }
     };
-    static const int VERTEX_BUF_SIZE = 1024;
+    static const int VERTEX_BUF_SIZE = 512*6;
     Vertex vertices[VERTEX_BUF_SIZE];
     int verticesLen;
 
@@ -496,6 +493,7 @@ private:
     static const int GL_TEXTURE0 = 0x84C0;
     static const int GL_ARRAY_BUFFER = 0x8892;
     static const int GL_STATIC_DRAW = 0x88E4;
+    static const int GL_CLAMP_TO_EDGE = 0x812F;
 };
 
 struct Win32Window
@@ -546,7 +544,6 @@ public:
         getWindowSize(w, h, wndW, wndH);
         SetWindowPos(mWindow, HWND_TOP, 0, 0, wndW, wndH,
                      SWP_NOOWNERZORDER | SWP_NOMOVE | SWP_NOZORDER);
-        gfx.setScreen(w, h);
     }
 
     void setMinClientSize(int w, int h)
