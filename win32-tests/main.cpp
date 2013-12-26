@@ -881,6 +881,32 @@ void Sys_Release(SysAPI* sys)
     delete sys;
 }
 
+int Sys_GetMouseButtonState(SysAPI* sys)
+{
+    int result = 0;
+    static const int KEY_MAPPING[] = {
+        VK_LBUTTON,  (int)MOUSE_BUTTON_LEFT,
+        VK_RBUTTON,  (int)MOUSE_BUTTON_RIGHT,
+        VK_XBUTTON1, (int)MOUSE_BUTTON_BACK,
+        VK_XBUTTON2, (int)MOUSE_BUTTON_FWRD,
+    };
+    for (int i=0; i<sizeof(KEY_MAPPING); i++) {
+        result |= (GetAsyncKeyState(KEY_MAPPING[i]) & (int)0x80000000) 
+            ? KEY_MAPPING[i+1] : 0;
+        i++;
+    }
+    return result;
+}
+
+void Sys_GetMousePos(SysAPI* sys, int* x, int* y)
+{
+    POINT coords;
+    GetCursorPos(&coords);
+    ScreenToClient(sys->wnd.mWindow, &coords);
+    *x = coords.x;
+    *y = coords.y;
+}
+
 extern "C" int Game_Run();
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)

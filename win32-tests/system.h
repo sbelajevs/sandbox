@@ -40,6 +40,18 @@ void Sys_Render(SysAPI* sys,
                 float tx, float ty, 
                 float tw, float th);
 
+enum MouseButtonState
+{
+    MOUSE_BUTTON_NONE  = 0,
+    MOUSE_BUTTON_LEFT  = 1,
+    MOUSE_BUTTON_RIGHT = 2,
+    MOUSE_BUTTON_BACK  = 4,
+    MOUSE_BUTTON_FWRD  = 8,
+};
+
+int  Sys_GetMouseButtonState(SysAPI* sys);
+void Sys_GetMousePos(SysAPI* sys, int* x, int* y);
+
 #ifdef __cplusplus
 }
 #endif
