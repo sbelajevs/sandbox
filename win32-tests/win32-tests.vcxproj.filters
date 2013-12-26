@@ -6,5 +6,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="system.h" />
+    <ClInclude Include="game.h" />
   </ItemGroup>
 </Project>

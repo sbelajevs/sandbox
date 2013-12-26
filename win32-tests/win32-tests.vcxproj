@@ -15,6 +15,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="game.h" />
     <ClInclude Include="system.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

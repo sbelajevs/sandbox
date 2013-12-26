@@ -1,11 +1,12 @@
 ﻿#include "system.h"
+#include "game.h"
 
 static const int NULL_PTR = 0;
 
-class Game
+struct GameAPI
 {
 public:
-    Game()
+    GameAPI()
         : r(0.f), g(0.f), b(0.f)
         , rd(0.001f), gd(0.005f), bd(0.0025f)
         , finished(false), askCount(0)
@@ -13,11 +14,16 @@ public:
     {
     }
 
-    void init()
+    void init(SysAPI* aSys, int w, int h, float aFrameTime)
     {
         typedef unsigned char byte;
         static const int WIDTH = 256;
         static const int HEIGHT = 256;
+
+        sys = aSys;
+        frameTime = aFrameTime;
+        width = w;
+        height = h;
 
         byte* bitmap = new byte[WIDTH*HEIGHT*4];
 
@@ -74,6 +80,7 @@ public:
         }
 
         Sys_ClearScreen(sys, r, g, b);
+        Sys_SetTexture(sys, 0);
         float baseX = r * width;
         float baseY = g * height;
         for (int i=0; i<10; i++) {
@@ -115,68 +122,57 @@ private:
     int width;
     int height;
 
-public:
+    float frameTime;
+
     SysAPI* sys;
 };
 
-void update(void* arg)
+GameAPI* GameAPI_Create()
 {
-    if (arg != NULL_PTR) {
-        ((Game*)arg)->update();
+    return new GameAPI();
+}
+
+void GameAPI_Init(GameAPI* game, SysAPI* sys, int w, int h, float frameTime)
+{
+    if (game != NULL_PTR) {
+        game->init(sys, w, h, frameTime);
     }
 }
 
-void render(void* arg)
+void GameAPI_Update(GameAPI* game)
 {
-    if (arg != NULL_PTR) {
-        ((Game*)arg)->render();
+    if (game != NULL_PTR) {
+        game->update();
     }
 }
 
-void onClose(void* arg)
+void GameAPI_Render(GameAPI* game)
 {
-    if (arg != NULL_PTR) {
-        ((Game*)arg)->askForExit();
+    if (game != NULL_PTR) {
+        game->render();
     }
 }
 
-void onResize(void* arg, int w, int h)
+void GameAPI_Resize(GameAPI* game, int w, int h)
 {
-    if (arg != NULL_PTR) {
-        ((Game*)arg)->resize(w, h);
+    if (game != NULL_PTR) {
+        game->resize(w, h);
     }
 }
 
-int checkForExit(void* arg)
+void GameAPI_OnClosing(GameAPI* game)
 {
-    if (arg != NULL_PTR) {
-        return ((Game*)arg)->gameFinished() ? 1 : 0;
+    if (game != NULL_PTR) {
+        game->askForExit();
     }
-    return 0;
 }
 
-extern "C"
-int Game_Run()
+int  GameAPI_Finished(GameAPI* game)
 {
-    Game game;
+    return game->gameFinished() ? 1 : 0;
+}
 
-    WindowParams params = {
-        640, 480, 
-        "My window",
-        &game,
-        update,
-        render,
-        onClose,
-        onResize,
-        checkForExit
-    };
-
-    game.sys = Sys_OpenWindow(&params);
-
-    game.init();
-
-    Sys_RunApp(game.sys);
-    Sys_Release(game.sys);
-
-    return 0;
+void GameAPI_Release(GameAPI* game)
+{
+    delete game;
 }

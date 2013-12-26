@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "system.h"
+#include "game.h"
 
 // TODO: add support for multiple monitors
 // * check if maximizing works on both monitors correctly
@@ -503,25 +504,101 @@ private:
     static const int GL_DYNAMIC_DRAW = 0x88E8;
 };
 
+}  // anonymous namespace
+
+struct SysAPI
+{
+    HWND window;
+    Graphics* gfx;
+
+    SysAPI(): window(NULL), gfx(NULL)
+    {
+    }
+
+    SysAPI(HWND aWindow, Graphics* aGfx)
+        : window(aWindow), gfx(aGfx)
+    {
+    }
+};
+
+namespace {
+
 struct Win32Window
 {
 public:
-    Win32Window()
-        : mFrameTime(0.f)
-        , mMinWidth(1)
-        , mMinHeight(1)
-        , mDoFinish(false)
-        , mCallbackArg(NULL)
-        , mUpdateFun(NULL)
-        , mRenderFun(NULL)
-        , mOnCloseFun(NULL)
-        , mExitCheckFun(NULL)
-        , mResizeFun(NULL)
+    static Win32Window* open(int width, int height, const char* title)
     {
+        Win32Window* ctx = new Win32Window();
+        ctx->mInstance = GetModuleHandle(NULL);
+
+        // Register a class first
+        {
+            WNDCLASS wc;
+            ZeroMemory(&wc, sizeof(wc));
+
+            wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+            wc.lpfnWndProc   = (WNDPROC) wndProc;
+            wc.cbClsExtra    = 0;
+            wc.cbWndExtra    = sizeof(void*) + sizeof(int);
+            wc.hInstance     = ctx->mInstance;
+            wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+            wc.hIcon         = LoadIcon(NULL, IDI_WINLOGO);
+            wc.lpszClassName = WND_CLASS_NAME;
+
+            ctx->mClassAtom = RegisterClass(&wc);
+        }
+
+        // Now we're ready to open the window
+        {
+            ctx->mWndStyle = WS_CLIPSIBLINGS | WS_CLIPCHILDREN 
+                | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU 
+                | WS_MINIMIZEBOX |  WS_MAXIMIZEBOX | WS_SIZEBOX;
+            ctx->mWndExStyle = WS_EX_APPWINDOW;
+
+            int wndW = -1;
+            int wndH = -1;
+            ctx->getWindowSize(width, height, wndW, wndH);
+
+            ctx->mWindow = CreateWindowEx(
+                ctx->mWndExStyle, WND_CLASS_NAME, 
+                title, ctx->mWndStyle,
+                CW_USEDEFAULT, 0, wndW, wndH,
+                NULL, NULL, ctx->mInstance, ctx
+            );
+        }
+
+        // Create OpenGL context
+        {
+            ctx->mDc = GetDC(ctx->mWindow);
+            PIXELFORMATDESCRIPTOR pfd;
+            int bestPixelFormatId = getPixelFormatId(ctx->mDc);
+            SetPixelFormat(ctx->mDc, bestPixelFormatId, &pfd);
+            ctx->mContext = wglCreateContext(ctx->mDc);
+            wglMakeCurrent(ctx->mDc, ctx->mContext);
+        }
+
+        ctx->gfx.init();
+        ctx->gfx.setScreen(width, height);
+
+        ctx->setMinClientSize(320, 200);
+        int displayW = -1;
+        int displayH = -1;
+        ctx->getDisplayRes(displayW, displayH);
+        ctx->setClientSize(displayW/2, displayH/2);
+
+        // And finally, make it visible
+        ShowWindow(ctx->mWindow, SW_SHOWNORMAL);
+        BringWindowToTop(ctx->mWindow);
+        SetForegroundWindow(ctx->mWindow);
+        SetFocus(ctx->mWindow);
+
+        return ctx;
     }
 
     ~Win32Window()
     {
+        GameAPI_Release(game);
+
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(mContext);
         mContext = NULL;
@@ -534,6 +611,85 @@ public:
 
         UnregisterClass(WND_CLASS_NAME, mInstance);
         mClassAtom = 0;
+    }
+
+    void init()
+    {
+        int refreshRate = getDisplayRefreshRate(mWindow);
+        mFrameTime = 1.f / (float)refreshRate;
+        mFrameTime -= 0.002f;
+        clamp(mFrameTime, 1/120.f, 1/30.f);
+
+        int clientWidth = -1;
+        int clientHeight = -1;
+        getClientSize(clientWidth, clientHeight);
+        sys = SysAPI(mWindow, &gfx);
+        game = GameAPI_Create();
+        GameAPI_Init(game, &sys, clientWidth, clientHeight, mFrameTime);
+    }
+
+    void run()
+    {
+        const float FRAME_TIME = mFrameTime;
+        float elapsedTime = 0.f;
+        HighResTimer timer;
+
+         while (doCheckForExit() == false) 
+         {
+             elapsedTime += (float)timer.getDeltaSeconds();
+
+             poll();
+             // Do no more than 3 updates, if more then something is wrong
+             for (int i=0; i<3 && elapsedTime>FRAME_TIME; i++) {
+                 doUpdateStep();
+                 elapsedTime -= FRAME_TIME;
+             }
+             clamp(elapsedTime, 0.f, FRAME_TIME);
+
+             bool isMinimized = IsIconic(mWindow) != 0;
+             if (isMinimized == false) {
+                 doRenderingStep();
+             }
+
+             float currentFrameTime = (float)timer.getDeltaSeconds();
+             elapsedTime += currentFrameTime;
+             float sleepTime = FRAME_TIME - currentFrameTime;
+             if (sleepTime > 0.f) {
+                 Sleep((DWORD)floor(sleepTime * 1000));
+             }
+        }
+    }
+
+    void doResize(int newW, int newH)
+    {
+        gfx.setScreen(newW, newH);
+        GameAPI_Resize(game, newW, newH);
+    }
+
+    void doUpdateStep()
+    {
+        GameAPI_Update(game);
+    }
+
+    void doRenderingStep()
+    {
+        GameAPI_Render(game);
+        gfx.flush();
+        SwapBuffers(mDc);
+    }
+
+    void getMinWindowSize(int& w, int& h)
+    {
+        getWindowSize(mMinWidth, mMinHeight, w, h);
+    }
+
+private:
+    Win32Window()
+        : mFrameTime(0.f)
+        , mMinWidth(1)
+        , mMinHeight(1)
+        , game(NULL)
+    {
     }
 
     void getClientSize(int& w, int& h)
@@ -569,46 +725,9 @@ public:
         mMinHeight = h;
     }
 
-    void getMinWindowSize(int& w, int& h)
-    {
-        getWindowSize(mMinWidth, mMinHeight, w, h);
-    }
-
-    void doResize(int newW, int newH)
-    {
-        gfx.setScreen(newW, newH);
-        if (mResizeFun) { 
-            mResizeFun(mCallbackArg, newW, newH); 
-        }
-    }
-
-    void doUpdateStep()
-    {
-        if (mUpdateFun) { 
-            mUpdateFun(mCallbackArg); 
-        }
-    }
-
-    void doRenderingStep()
-    {
-        if (mRenderFun) {
-            mRenderFun(mCallbackArg);
-            gfx.flush();
-            SwapBuffers(mDc);
-        }
-    }
-
     bool doCheckForExit()
     {
-        return mExitCheckFun && mExitCheckFun(mCallbackArg);
-    }
-
-    void initFrameTime()
-    {
-        int refreshRate = getDisplayRefreshRate(mWindow);
-        mFrameTime = 1.f / (float)refreshRate;
-        mFrameTime -= 0.002f;
-        clamp(mFrameTime, 1/120.f, 1/30.f);
+        return GameAPI_Finished(game) == 1;
     }
 
     void getWindowSize(int clientW, int clientH, int& wndW, int& wndH)
@@ -624,16 +743,9 @@ public:
         MSG msg;
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
-            if (msg.message == WM_QUIT) 
-            {
-                if (mOnCloseFun) { 
-                    mOnCloseFun(mCallbackArg); 
-                } else { 
-                    mDoFinish = true; 
-                }
-            } 
-            else 
-            {
+            if (msg.message == WM_QUIT) {
+                GameAPI_OnClosing(game);
+            } else {
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
@@ -653,15 +765,8 @@ public:
     int mMinWidth;
     int mMinHeight;
 
-    bool mDoFinish;
-
-    void* mCallbackArg;
-    SysGameFun mUpdateFun;
-    SysGameFun mRenderFun;
-    SysGameFun mOnCloseFun;
-    SysExitCheckFun mExitCheckFun;
-    SysResizeFun mResizeFun;
-
+    SysAPI sys;
+    GameAPI* game;
     Graphics gfx;
 };
 
@@ -716,149 +821,14 @@ static LRESULT CALLBACK wndProc(HWND   hwnd,
 
 }  // anonymous namespace
 
-
-struct SysAPI
-{
-    Win32Window wnd;
-};
-
-SysAPI* Sys_OpenWindow(const WindowParams* p)
-{
-    SysAPI* sys = new SysAPI();
-    Win32Window* ctx = &sys->wnd;
-    ctx->mInstance = GetModuleHandle(NULL);
-
-    // Register a class first
-    {
-        WNDCLASS wc;
-        ZeroMemory(&wc, sizeof(wc));
-
-        wc.style         = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
-        wc.lpfnWndProc   = (WNDPROC) wndProc;
-        wc.cbClsExtra    = 0;
-        wc.cbWndExtra    = sizeof(void*) + sizeof(int);
-        wc.hInstance     = ctx->mInstance;
-        wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-        wc.hIcon         = LoadIcon(NULL, IDI_WINLOGO);
-        wc.lpszClassName = WND_CLASS_NAME;
-
-        ctx->mClassAtom = RegisterClass(&wc);
-    }
-
-    // Now we're ready to open the window
-    {
-        ctx->mWndStyle = WS_CLIPSIBLINGS | WS_CLIPCHILDREN 
-            | WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU 
-            | WS_MINIMIZEBOX |  WS_MAXIMIZEBOX | WS_SIZEBOX;
-        ctx->mWndExStyle = WS_EX_APPWINDOW;
-
-        int wndW = -1;
-        int wndH = -1;
-        ctx->getWindowSize(p->width, p->height, wndW, wndH);
-
-        ctx->mWindow = CreateWindowEx(
-            ctx->mWndExStyle, WND_CLASS_NAME, 
-            p->windowTitle, ctx->mWndStyle,
-            CW_USEDEFAULT, 0, wndW, wndH,
-            NULL, NULL, ctx->mInstance, ctx
-        );
-    }
-
-    // Create OpenGL context
-    {
-        ctx->mDc = GetDC(ctx->mWindow);
-        PIXELFORMATDESCRIPTOR pfd;
-        int bestPixelFormatId = getPixelFormatId(ctx->mDc);
-        SetPixelFormat(ctx->mDc, bestPixelFormatId, &pfd);
-        ctx->mContext = wglCreateContext(ctx->mDc);
-        wglMakeCurrent(ctx->mDc, ctx->mContext);
-    }
-
-    ctx->initFrameTime();
-    ctx->gfx.init();
-    ctx->gfx.setScreen(p->width, p->height);
-
-    ctx->mCallbackArg = p->gameObject;
-    ctx->mUpdateFun = p->updateFun;
-    ctx->mRenderFun = p->renderFun;
-    ctx->mOnCloseFun = p->onCloseFun;
-    ctx->mResizeFun = p->onResizeFun;
-    ctx->mExitCheckFun = p->checkExitFun;
-
-    ctx->setMinClientSize(320, 200);
-    int displayW = -1;
-    int displayH = -1;
-    ctx->getDisplayRes(displayW, displayH);
-    ctx->setClientSize(displayW/2, displayH/2);
-
-    // And finally, make it visible
-    ShowWindow(ctx->mWindow, SW_SHOWNORMAL);
-    BringWindowToTop(ctx->mWindow);
-    SetForegroundWindow(ctx->mWindow);
-    SetFocus(ctx->mWindow);
-
-    return sys;
-}
-
-void Sys_GetDisplayRes(SysAPI* sys, int* w, int* h)
-{
-    HMONITOR hmon = MonitorFromWindow(sys->wnd.mWindow, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO minfo;
-    minfo.cbSize = sizeof(MONITORINFO);
-    GetMonitorInfo(hmon, &minfo);
-    *w = minfo.rcMonitor.right  - minfo.rcMonitor.left;
-    *h = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
-}
-
-float Sys_GetFrameTime(SysAPI* sys)
-{
-    return sys->wnd.mFrameTime;
-}
-
-void Sys_RunApp(SysAPI* sys)
-{
-     const float FRAME_TIME = sys->wnd.mFrameTime;
-     float elapsedTime = 0.f;
-     HighResTimer timer;
-
-     while (sys->wnd.mDoFinish == false) 
-     {
-         if (sys->wnd.doCheckForExit()) {
-             break;
-         }
-
-         elapsedTime += (float)timer.getDeltaSeconds();
-
-         sys->wnd.poll();
-         // Do no more than 3 updates, if more then something is wrong
-         for (int i=0; i<3 && elapsedTime>FRAME_TIME; i++) {
-             sys->wnd.doUpdateStep();
-             elapsedTime -= FRAME_TIME;
-         }
-         clamp(elapsedTime, 0.f, FRAME_TIME);
-
-         bool isMinimized = IsIconic(sys->wnd.mWindow) != 0;
-         if (isMinimized == false) {
-            sys->wnd.doRenderingStep();
-         }
-
-         float currentFrameTime = (float)timer.getDeltaSeconds();
-         elapsedTime += currentFrameTime;
-         float sleepTime = FRAME_TIME - currentFrameTime;
-         if (sleepTime > 0.f) {
-             Sleep((DWORD)floor(sleepTime * 1000));
-         }
-    }
-}
-
 int Sys_LoadTexture(SysAPI* sys, const unsigned char* data, int w, int h)
 {
-    return sys->wnd.gfx.addTexture(data, w, h);
+    return sys->gfx->addTexture(data, w, h);
 }
 
 void Sys_SetTexture(SysAPI* sys, int hTexture)
 {
-    sys->wnd.gfx.setTexture(hTexture);
+    sys->gfx->setTexture(hTexture);
 }
 
 void Sys_ClearScreen(SysAPI* sys, float r, float g, float b)
@@ -873,12 +843,7 @@ void Sys_Render(SysAPI* sys,
                 float tx, float ty, 
                 float tw, float th)
 {
-    sys->wnd.gfx.renderQuad(sx, sy, sw, sh, tx, ty, tw, th);
-}
-
-void Sys_Release(SysAPI* sys)
-{
-    delete sys;
+    sys->gfx->renderQuad(sx, sy, sw, sh, tx, ty, tw, th);
 }
 
 int Sys_GetMouseButtonState(SysAPI* sys)
@@ -902,15 +867,18 @@ void Sys_GetMousePos(SysAPI* sys, int* x, int* y)
 {
     POINT coords;
     GetCursorPos(&coords);
-    ScreenToClient(sys->wnd.mWindow, &coords);
+    ScreenToClient(sys->window, &coords);
     *x = coords.x;
     *y = coords.y;
 }
 
-extern "C" int Game_Run();
-
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    int result = Game_Run();
-    return result;
+    Win32Window* window = Win32Window::open(640, 480, "My window");
+    window->init();
+    window->run();
+
+    delete window;
+
+    return 0;
 }
