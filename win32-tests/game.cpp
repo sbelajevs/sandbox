@@ -51,6 +51,20 @@ public:
         r += rd;
         g += gd;
         b += bd;
+
+        int mbs = Sys_GetMouseButtonState(sys);
+        if (mbs & (int)MOUSE_BUTTON_LEFT) {
+            r = 1.f; g = 0.f; b = 0.f;
+        }
+        if (mbs & (int)MOUSE_BUTTON_RIGHT) {
+            r = 0.f; g = 1.f; b = 0.f;
+        }
+        if (mbs & (int)MOUSE_BUTTON_BACK) {
+            r = 0.f; g = 0.f; b = 1.f;
+        }
+        if (mbs & (int)MOUSE_BUTTON_FWRD) {
+            r = 1.f; g = 1.f; b = 0.f;
+        }
     }
 
     void render()
