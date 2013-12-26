@@ -544,6 +544,16 @@ public:
         h = area.bottom;
     }
 
+    void getDisplayRes(int& w, int& h)
+    {
+        HMONITOR hmon = MonitorFromWindow(mWindow, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO minfo;
+        minfo.cbSize = sizeof(MONITORINFO);
+        GetMonitorInfo(hmon, &minfo);
+        w = minfo.rcMonitor.right  - minfo.rcMonitor.left;
+        h = minfo.rcMonitor.bottom - minfo.rcMonitor.top;
+    }
+
     void setClientSize(int w, int h)
     {
         int wndW = -1;
@@ -764,12 +774,6 @@ SysAPI* Sys_OpenWindow(const WindowParams* p)
         wglMakeCurrent(ctx->mDc, ctx->mContext);
     }
 
-    // And finally, make it visible
-    ShowWindow(ctx->mWindow, SW_SHOWNORMAL);
-    BringWindowToTop(ctx->mWindow);
-    SetForegroundWindow(ctx->mWindow);
-    SetFocus(ctx->mWindow);
-
     ctx->initFrameTime();
     ctx->gfx.init();
     ctx->gfx.setScreen(p->width, p->height);
@@ -781,17 +785,19 @@ SysAPI* Sys_OpenWindow(const WindowParams* p)
     ctx->mResizeFun = p->onResizeFun;
     ctx->mExitCheckFun = p->checkExitFun;
 
+    ctx->setMinClientSize(320, 200);
+    int displayW = -1;
+    int displayH = -1;
+    ctx->getDisplayRes(displayW, displayH);
+    ctx->setClientSize(displayW/2, displayH/2);
+
+    // And finally, make it visible
+    ShowWindow(ctx->mWindow, SW_SHOWNORMAL);
+    BringWindowToTop(ctx->mWindow);
+    SetForegroundWindow(ctx->mWindow);
+    SetFocus(ctx->mWindow);
+
     return sys;
-}
-
-void Sys_SetMinClientSize(SysAPI* sys, int minW, int minH)
-{
-    sys->wnd.setMinClientSize(minW, minH);
-}
-
-void Sys_SetClientSize(SysAPI* sys, int w, int h)
-{
-    sys->wnd.setClientSize(w, h);
 }
 
 void Sys_GetDisplayRes(SysAPI* sys, int* w, int* h)
