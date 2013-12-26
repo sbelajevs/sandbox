@@ -5,6 +5,7 @@ extern "C" {
 #endif
 
 struct GameAPI;
+struct SysAPI;
 
 GameAPI* GameAPI_Create();
 void GameAPI_Init(GameAPI* game, SysAPI* sys, int w, int h, float frameTime);

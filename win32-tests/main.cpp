@@ -630,33 +630,21 @@ public:
 
     void run()
     {
-        const float FRAME_TIME = mFrameTime;
-        float elapsedTime = 0.f;
-        HighResTimer timer;
+        HighResTimer frameTimer;
 
-         while (doCheckForExit() == false) 
-         {
-             elapsedTime += (float)timer.getDeltaSeconds();
+        updateTimer.reset();
+        updateTimeElapsed = 0.f;
 
-             poll();
-             // Do no more than 3 updates, if more then something is wrong
-             for (int i=0; i<3 && elapsedTime>FRAME_TIME; i++) {
-                 doUpdateStep();
-                 elapsedTime -= FRAME_TIME;
-             }
-             clamp(elapsedTime, 0.f, FRAME_TIME);
+        while (doCheckForExit() == false) 
+        {
+            doUpdateStep();
+            doRenderingStep();
 
-             bool isMinimized = IsIconic(mWindow) != 0;
-             if (isMinimized == false) {
-                 doRenderingStep();
-             }
-
-             float currentFrameTime = (float)timer.getDeltaSeconds();
-             elapsedTime += currentFrameTime;
-             float sleepTime = FRAME_TIME - currentFrameTime;
-             if (sleepTime > 0.f) {
-                 Sleep((DWORD)floor(sleepTime * 1000));
-             }
+            float sleepTime = mFrameTime - 0.002f 
+                - (float)frameTimer.getDeltaSeconds();
+            if (sleepTime > 0.f) {
+                Sleep((DWORD)floor(sleepTime * 1000));
+            }
         }
     }
 
@@ -668,14 +656,25 @@ public:
 
     void doUpdateStep()
     {
-        GameAPI_Update(game);
+        poll();
+
+        updateTimeElapsed += (float)updateTimer.getDeltaSeconds();
+        // Do no more than 3 updates, if more then something is wrong
+        for (int i=0; i<3 && updateTimeElapsed>mFrameTime; i++) {
+            GameAPI_Update(game);
+            updateTimeElapsed -= mFrameTime;
+        }
+        clamp(updateTimeElapsed, 0.f, mFrameTime);
     }
 
     void doRenderingStep()
     {
-        GameAPI_Render(game);
-        gfx.flush();
-        SwapBuffers(mDc);
+        if (IsIconic(mWindow) == 0) 
+        {
+            GameAPI_Render(game);
+            gfx.flush();
+            SwapBuffers(mDc);
+        }
     }
 
     void getMinWindowSize(int& w, int& h)
@@ -761,6 +760,8 @@ private:
     HGLRC mContext;
 
     float mFrameTime;
+    HighResTimer updateTimer;
+    float updateTimeElapsed;
 
     int mMinWidth;
     int mMinHeight;
