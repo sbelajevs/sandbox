@@ -637,6 +637,7 @@ public:
 
         while (doCheckForExit() == false) 
         {
+            frameTimer.getDeltaSeconds();
             doUpdateStep();
             doRenderingStep();
 
